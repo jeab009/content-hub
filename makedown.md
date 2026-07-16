@@ -116,3 +116,53 @@ Admin คนเดียวดูแลทั้งหมด — budget/timeline
 ## 9. Remaining Open Question
 
 - Budget/timeline ยังไม่ระบุตัวเลขจาก admin
+
+## 9.5 Phase Plan v2 (2026-07-16, จาก Loop Engineering PM pass)
+
+Phase map ปรับใหม่ — เพิ่ม Phase 1.5 เป็น blocking gate:
+
+| Phase | ชื่อ | สถานะ | ขึ้นกับ |
+|---|---|---|---|
+| 1 | Foundation | **เสร็จ, verified** | — |
+| 1.5 | Compliance & Schema Gate | **เสร็จ (2026-07-16)** — schema migrate แล้ว, copyright gate service + tests, seed provisional defaults; เหลือ Meta App Review submission (ค้าง admin) | Phase 1 |
+| 2 | Content CMS + Ranking v1 + Manual Publish (FB+YouTube) | ยังไม่เริ่ม (มี WIP บางส่วนใน tree — commit แยกไว้, ยังไม่ผ่าน QA) | Phase 1.5 |
+| 3 | Dashboard v1 (revenue/reach + KPI alert) | ยังไม่เริ่ม | Phase 2 |
+| 4 | Comment Aggregation (+SLA/escalation) | ยังไม่เริ่ม — **PDPA gate**: ต้องมี DPA กับ sentiment vendor + retention policy ก่อน ship | Phase 2 (ขนานกับ 3 ได้) |
+| 5 | TikTok/LINE + Ranking v2 + Export | ยังไม่เริ่ม | Phase 3+4 |
+| 6 | Optimization Backlog (A/B test, competitor benchmark) | backlog, ยังไม่ commit | Phase 5 |
+| — | Ads/Paid Module | **รอ stakeholder ตัดสิน** — scope ใหม่ทั้งก้อน ไม่ schedule | แยก scoping |
+
+**Phase 1.5 สิ่งที่ส่งมอบแล้ว**: enum 6 ตัว, `Content` +5 fields (`content_pillar` nullable/fail-closed, `target_age_segment` nullable รอยืนยัน, `copyright_cleared` 3-state, `copyright_notes`, `copyright_evidence_url`), ตารางใหม่ `content_assets`/`pillar_ratio_policies`/`platform_cadence_targets`, `CopyrightGateService.canMarkCopyrightCleared()` (comedy ผ่านเลย, drama/product ต้องมี evidence URL), seed provisional (40/30/30, FB 7/wk, YT 3/wk — `is_provisional=true` ทุกแถว)
+
+**System Analyst conditions (9 ข้อ, gate phase ถัดไป)**: strip PII ก่อนส่ง sentiment vendor + DPA + retention 12 เดือน (gate Phase 4), Meta scope justification matrix (gate Phase 2-4 review), `copyright_evidence_url` บังคับ drama/product (ทำแล้วใน 1.5), manual metric append-only (gate Phase 3), step-up re-auth publish/revenue/reply + CSRF ทุก mutating route ใหม่ + audit_log รวมศูนย์ (gate Phase 2-4), publish idempotency + server-side recompute `was_override` (gate Phase 2), alert dedup (gate Phase 3/4), PlatformAdapter contract tests (gate Phase 5), PROVISIONAL badge ใน UI (gate Phase 2)
+
+## 10. Gap Analysis (2026-07-16) — ยังไม่อยู่ใน scope ปัจจุบัน
+
+Current build = Phase 1 เท่านั้น (infra/auth/DB/FB OAuth/queue, ดู README.md). ด้านล่างคือ gap นอกเหนือ §1-9 เดิม, แยกตามหมวด — ยังไม่ได้ตัดสินใจว่าจะเพิ่มเข้า scope program นี้หรือแยกระบบ:
+
+### Content Strategy
+- Content cadence/frequency target ต่อ platform (ยังไม่มีใน Scheduler screen §2 — ตอนนี้แค่ calendar view ว่างเปล่า ไม่มี target)
+- Content pillar ratio (product/drama/comedy) ต่อ platform — ป้องกัน content ผิด mix จาก algorithm bias แต่ละช่อง
+- Platform-native format adaptation — ตอนนี้ data model `content.media_url` เป็นตัวเดียว (§3) ยิงทุก platform ใช้ asset เดียวกัน ไม่ crop/aspect ratio ต่างกัน (TikTok 9:16 vs FB feed vs YouTube Shorts)
+- A/B creative test (caption/thumbnail variant) ก่อนเลือกยิงจริง — ไม่มีใน flow ปัจจุบัน
+
+### Ads/Paid (ยังไม่มี module เลย)
+- ระบบปัจจุบัน = **organic distribution only**. ถ้าต้องการ "ยิง Ads" จริง (ตามชื่อ role ที่ user ระบุ) ต้องเพิ่ม module ใหม่ทั้งก้อน: ad account connect (Meta Ads API/TikTok Ads API แยกจาก organic OAuth ที่มีอยู่), budget allocation ต่อ platform, campaign objective, spend vs revenue ROI dashboard
+- Revenue modelที่ confirm แล้ว (§6) เป็น monetization payout เท่านั้น ไม่ใช่ ad-spend ROI — ต้องเปิด decision ใหม่ถ้าจะรวม ads spend เข้า metric schema
+
+### Customer Engagement (Phase 4 comment aggregator ยัง thin)
+- Response SLA / priority tag (complaint vs question vs spam) — ไม่มีใน §1.3 comment aggregator เดิม
+- Escalation rule (negative sentiment spike → alert)
+- Canned reply template
+- Audience sub-segment (23-30 vs 31-45) — ถูก flag ใน suggestion.md แต่ยังไม่เข้า data model
+
+### Compliance/Legal
+- Copyright/license clearance workflow ผูกเข้า Content Editor (เช่น required field ก่อน publish) — ยัง flag ใน suggestion.md เฉยๆ ไม่เข้า schema
+- `docs/meta-app-review-status.md` ยัง blank — ต้อง admin กรอกก่อนใช้ OAuth นอก local dev
+
+### Analytics/Growth
+- Competitor benchmark tracking — ไม่มีใน scope
+- KPI target/threshold + alert — dashboard เดิม (§2, §5 Phase 3) แค่แสดงผล ไม่มี target/alert
+- Ranking engine v1 (§8) ใช้ organic engagement/earnings เท่านั้น — ถ้าเพิ่ม ads module ทีหลังต้องรวม paid signal เข้า ranking ด้วย
+
+**Next step**: ต้องตัดสินใจจาก admin ว่าข้อไหนเข้า scope program นี้ (เพิ่มเป็น Phase 6+) หรือแยกเป็นระบบ/project ต่างหาก — โดยเฉพาะ ads/paid module เพราะกระทบ data model และ tech stack ใหม่ (ad account OAuth, spend tracking) ไม่ใช่แค่ UI เพิ่ม

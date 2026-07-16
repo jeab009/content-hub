@@ -23,3 +23,21 @@
 > ขอ implement plan step by step หรือแบ่ง phase implement
 
 **Output**: ขยาย §5 ใน [makedown.md](makedown.md) เป็น step-by-step ละเอียด 5 phase (Foundation, Content+Ranking+Publish, Dashboard, Comment, Multi-platform expansion) พร้อม exit criteria แต่ละ phase.
+
+## 2026-07-16 — Gap analysis: content plan/ads/engagement ที่ยังขาด
+
+> ในฐานะผู้เชี่ยวชาญ content management + ยิง Ads ไปยัง platform ต่างๆ จากประสบการณ์ใน program นี้ยังมีอะไรที่ต้องทำเพิ่มอีกหรือเปล่า อย่างเช่น content plan, customer engagement, หรืออื่นๆ
+
+**Output**: สำรวจ scope ปัจจุบัน (Phase 1 built only — infra/auth/DB/FB OAuth/queue, ดู [README.md](README.md)) เทียบ full plan ใน [makedown.md](makedown.md) พบ gap ที่ยังไม่อยู่ใน scope เลย: content pillar/cadence strategy, platform-native format adaptation, A/B creative test, **ads/paid module ทั้งก้อน (ระบบปัจจุบัน organic distribution only, ไม่มี ad spend/ROI)**, community management workflow (SLA/escalation/canned reply), audience sub-segment, copyright clearance workflow, KPI target/competitor benchmark. เพิ่มเป็น §10 ใน [makedown.md](makedown.md), บันทึก suggestion ใน [suggestion.md](suggestion.md), สร้าง [errorlog.md](errorlog.md) และ [bussiness_rule.md](bussiness_rule.md) ใหม่ตามคำขอ.
+
+## 2026-07-16 — /loop: implementation plan + แบ่ง phase + Phase 1.5 build
+
+> /loop สร้าง implementation plan และแบ่ง phase ในการทำงานออกมาด้วย
+
+**Output**: รัน Loop Engineering pipeline เต็มรอบ:
+1. **PM** — Project Plan v2: เพิ่ม Phase 1.5 (Compliance & Schema Gate) เป็น blocking gate ก่อน Phase 2, ปรับ Phase 2-5 เดิม, เพิ่ม Phase 6 backlog (A/B test, competitor benchmark), Ads/Paid module แยกเป็น pending stakeholder decision ชัดเจน, risk register 9 ข้อ
+2. **App Designer** — Architecture Design: schema amendment (`content_asset`, `pillar_ratio_policy`, `platform_cadence_target`, copyright gate fields, `ranking_score`), 6 screens spec, 7 NestJS modules ใหม่ + `PlatformAdapterInterface`
+3. **System Analyst** — APPROVED WITH CONDITIONS (9 additive controls: PDPA/DPA สำหรับ sentiment vendor, scope justification matrix, `copyright_evidence_url` บังคับ drama/product, manual metric append-only, step-up re-auth, publish idempotency, alert dedup, adapter contract tests, PROVISIONAL badge)
+4. **Developer** — implement **Phase 1.5 เท่านั้น**: migration `20260716110019`, 3 ตารางใหม่ + 5 fields บน Content, `CopyrightGateService` (fail-closed), seed provisional defaults, 39/39 tests
+5. **QC** — REJECTED (tree hygiene: Phase 2 WIP ปนใน tree) / **QA** — SIGNED OFF (verify ทุกอย่างบน Postgres จริง, zero bugs)
+6. Admin ตัดสิน: เก็บ Phase 2 WIP + commit แยกก้อน (ไม่ revert)

@@ -18,3 +18,16 @@
 ## Remaining open decision
 
 - Budget/timeline ยังไม่ระบุตัวเลขจาก admin
+- Gap analysis (2026-07-16, ดู [makedown.md](makedown.md) §10): ads/paid module, content cadence/format strategy, comment SLA/escalation, copyright workflow — ยังไม่ตัดสินว่าเข้า scope program นี้ (Phase 6+) หรือแยกระบบ
+
+## Build status (2026-07-16)
+
+- **Implemented**: Phase 1 (foundation) + **Phase 1.5 (Compliance & Schema Gate)** — schema amendment (copyright gate fields, `content_assets`, `pillar_ratio_policies`, `platform_cadence_targets`), `CopyrightGateService` fail-closed, seed provisional defaults. QA signed off 39/39 tests บน Postgres จริง. ดู [makedown.md](makedown.md) §9.5
+- **Not implemented**: Content CMS, ranking engine, publish flow, dashboard UI, comment aggregation, YouTube/TikTok/LINE platforms (Phase 2-5). มี Phase 2 WIP บางส่วน commit แยกไว้ (ยังไม่ผ่าน QA — content.service, upload-validation, admin.guard, publish orchestration config/audit hooks, migration `20260716054701`)
+- Phase 1.5 ค้าง: Meta App Review submission (admin ต้องกรอก docs/meta-app-review-status.md), ยืนยันตัวเลข pillar ratio + cadence target จริง (ตอนนี้ provisional 40/30/30, FB 7/wk, YT 3/wk)
+- Known bugs BUG-001~004 (Nest DI, dotenv, circular import, queue name) — ทั้งหมด fixed แล้ว ดู [errorlog.md](errorlog.md)
+
+## Reference files
+
+- [errorlog.md](errorlog.md) — test failures/error ที่เจอระหว่าง build
+- [bussiness_rule.md](bussiness_rule.md) — business rule ที่ confirm แล้ว (แยกจาก design/tech detail)
