@@ -14,7 +14,20 @@ export type AuditAction =
   | 'connected_account.oauth.connect'
   | 'connected_account.oauth.error'
   | 'connected_account.disconnect'
-  | 'connected_account.token_refresh.failure';
+  | 'connected_account.token_refresh.failure'
+  // Phase 2 — CMS
+  | 'content_created'
+  | 'content_updated'
+  | 'content_archived'
+  | 'content_uploaded'
+  // Phase 2 — ranking
+  | 'ranking_recomputed'
+  // Phase 2 — publish orchestration (see docs/publish-orchestration-addendum.md)
+  | 'publish_attempt_started'
+  | 'publish_succeeded'
+  | 'publish_failed'
+  | 'publish_unconfirmed'
+  | 'publish_ambiguity_resolved';
 
 export type AuditResult = 'success' | 'failure';
 

@@ -32,6 +32,20 @@ export interface AppConfig {
     graphApiVersion: string;
     scopes: string[];
   };
+  upload: {
+    storageDir: string;
+    maxImageBytes: number;
+    maxVideoBytes: number;
+  };
+  publisher: {
+    facebookImpl: 'mock' | 'facebook';
+    youtubeImpl: 'mock' | 'youtube';
+    mockLatencyMs: number;
+    mockFailureRate: number;
+  };
+  ranking: {
+    weightsPath: string;
+  };
 }
 
 export default (): { app: AppConfig } => ({
@@ -69,6 +83,26 @@ export default (): { app: AppConfig } => ({
         .split(',')
         .map((scope) => scope.trim())
         .filter(Boolean),
+    },
+    upload: {
+      storageDir: process.env.UPLOAD_STORAGE_DIR ?? './storage/uploads',
+      // Documented NFR assumption (System Analyst item 1): 20MB is generous
+      // for a single JPEG/PNG social-post image; 500MB covers a few minutes
+      // of H.264 MP4 at typical social-post bitrates without accepting
+      // arbitrary large uploads.
+      maxImageBytes: parseInt(process.env.UPLOAD_MAX_IMAGE_BYTES ?? `${20 * 1024 * 1024}`, 10),
+      maxVideoBytes: parseInt(process.env.UPLOAD_MAX_VIDEO_BYTES ?? `${500 * 1024 * 1024}`, 10),
+    },
+    publisher: {
+      // MUST default to 'mock' everywhere except an explicit opt-in — see
+      // the startup assertion in main.ts (security condition #4).
+      facebookImpl: (process.env.PUBLISHER_IMPL_FACEBOOK ?? 'mock') as 'mock' | 'facebook',
+      youtubeImpl: (process.env.PUBLISHER_IMPL_YOUTUBE ?? 'mock') as 'mock' | 'youtube',
+      mockLatencyMs: parseInt(process.env.MOCK_PUBLISHER_LATENCY_MS ?? '50', 10),
+      mockFailureRate: parseFloat(process.env.MOCK_PUBLISHER_FAILURE_RATE ?? '0'),
+    },
+    ranking: {
+      weightsPath: process.env.RANKING_WEIGHTS_PATH ?? './config/ranking-weights.yaml',
     },
   },
 });

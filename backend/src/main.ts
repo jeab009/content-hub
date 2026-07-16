@@ -64,9 +64,48 @@ async function bootstrap(): Promise<void> {
   app.useGlobalFilters(new RedactingExceptionFilter());
   app.useGlobalInterceptors(new RedactingLoggingInterceptor());
 
+  assertPublisherFlagsAreSafe(appConfig);
+
   await app.listen(appConfig.port);
   // eslint-disable-next-line no-console
   console.log(`Content Hub backend listening on port ${appConfig.port}`);
+}
+
+/**
+ * PublisherModule security condition #4: PUBLISHER_IMPL_FACEBOOK /
+ * PUBLISHER_IMPL_YOUTUBE MUST default to "mock" everywhere. This is a
+ * defense-in-depth check on top of the Joi default/enum validation in
+ * env.validation.ts — it specifically guards against a non-production
+ * environment (local dev, CI, a demo box) being accidentally pointed at a
+ * real platform adapter, which would make real API calls / real posts from
+ * a non-production run. Refuses to boot in that case rather than merely
+ * warning, because a silently-live publisher in a demo environment is
+ * exactly the kind of mistake this assertion exists to catch before it
+ * posts something.
+ */
+function assertPublisherFlagsAreSafe(appConfig: AppConfig): void {
+  const nonMockFlags = [
+    appConfig.publisher.facebookImpl !== 'mock' ? 'PUBLISHER_IMPL_FACEBOOK' : null,
+    appConfig.publisher.youtubeImpl !== 'mock' ? 'PUBLISHER_IMPL_YOUTUBE' : null,
+  ].filter((flag): flag is string => flag !== null);
+
+  if (nonMockFlags.length === 0) {
+    return;
+  }
+
+  if (appConfig.nodeEnv !== 'production') {
+    throw new Error(
+      `Refusing to boot: ${nonMockFlags.join(', ')} resolved to a real publisher implementation ` +
+        `while NODE_ENV="${appConfig.nodeEnv}" (not "production"). Real platform adapters must only ` +
+        'run in production. Set the flag(s) back to "mock" for local/dev/CI use.',
+    );
+  }
+
+  // eslint-disable-next-line no-console
+  console.warn(
+    `WARNING: ${nonMockFlags.join(', ')} resolved to a real publisher implementation in production. ` +
+      'Confirm this is intentional — real posts will be made to the live platform.',
+  );
 }
 
 bootstrap();

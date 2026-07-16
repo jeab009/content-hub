@@ -34,4 +34,18 @@ export const envValidationSchema = Joi.object({
   SEED_ADMIN_EMAIL: Joi.string().email().optional(),
   SEED_ADMIN_NAME: Joi.string().optional(),
   SEED_ADMIN_PASSWORD: Joi.string().allow('').optional(),
+
+  UPLOAD_STORAGE_DIR: Joi.string().default('./storage/uploads'),
+  UPLOAD_MAX_IMAGE_BYTES: Joi.number().default(20 * 1024 * 1024),
+  UPLOAD_MAX_VIDEO_BYTES: Joi.number().default(500 * 1024 * 1024),
+
+  // Publisher feature flags — MUST default to 'mock'. See main.ts startup
+  // assertion (security condition #4): booting with a non-mock value
+  // outside NODE_ENV=production refuses to start.
+  PUBLISHER_IMPL_FACEBOOK: Joi.string().valid('mock', 'facebook').default('mock'),
+  PUBLISHER_IMPL_YOUTUBE: Joi.string().valid('mock', 'youtube').default('mock'),
+  MOCK_PUBLISHER_LATENCY_MS: Joi.number().default(50),
+  MOCK_PUBLISHER_FAILURE_RATE: Joi.number().min(0).max(1).default(0),
+
+  RANKING_WEIGHTS_PATH: Joi.string().default('./config/ranking-weights.yaml'),
 });
