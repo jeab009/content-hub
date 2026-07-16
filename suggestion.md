@@ -49,4 +49,37 @@
 - **จาก System Analyst (ต้องทำก่อน phase ที่เกี่ยว)**: DPA กับ Thai sentiment vendor + strip user identifier ก่อนส่ง text + retention policy ~12 เดือน (gate Phase 4); manual revenue entry ต้อง append-only ห้าม UPDATE (gate Phase 3); step-up re-auth บน publish/revenue/reply (gate Phase 2)
 - **จาก QA**: เพิ่ม DB UNIQUE constraint บน `pillar_ratio_policies.content_pillar` และ `platform_cadence_targets.platform` ก่อน Phase 3 (ตอนนี้ idempotency เป็น app-layer เท่านั้น)
 - **จาก QA**: sync `bussiness_rule.md` กับ `TargetAgeSegment` enum ที่ ship จริง (มี `18-22`/`46+` เกินจากที่ doc ระบุ)
-- **Provisional values ต้องถาม admin ยืนยัน**: pillar ratio 40/30/30 กับ cadence FB 7/wk, YT 3/wk เป็น placeholder — UI Phase 2 ต้องแสดง badge "PROVISIONAL" จนกว่าจะยืนยัน
+- ~~**Provisional values ต้องถาม admin ยืนยัน**~~ — ยืนยันแล้ว 2026-07-16: ใช้ค่า recommend เป็น final (40/30/30, FB 7/wk, YT 3/wk), flip `is_provisional=false` แล้ว — badge PROVISIONAL ใน UI Phase 2 ไม่จำเป็นแล้ว
+
+## Ads/Paid Module — ข้อดี/ข้อเสีย แยก vs รวม (2026-07-16, ตอบคำถาม admin)
+
+### ทางเลือก A: รวมเข้า Content Hub (Phase 7+)
+
+ข้อดี:
+- **ข้อมูล organic + paid อยู่จอเดียว** — เห็น ROI รวมต่อ content ชิ้นเดียวกัน (organic payout + ad spend + boosted reach) ตัดสินใจ boost content ที่ organic ดีอยู่แล้วได้จากหน้าเดียว
+- **Ranking engine ฉลาดขึ้น** — v2/v3 ใช้ paid signal ร่วมจัด priority ได้ (content ไหนคุ้ม boost)
+- **ใช้ infra เดิม** — auth, ConnectedAccount, queue, dashboard skeleton, PlatformAdapter seam ใช้ซ้ำได้ ประหยัดกว่าเริ่มระบบใหม่จากศูนย์
+- Admin คนเดียว ใช้ระบบเดียว ไม่ต้องสลับเครื่องมือ
+
+ข้อเสีย:
+- **Scope ใหญ่** — OAuth ชุดใหม่ทั้งก้อน (Meta Ads API / TikTok Ads API แยกจาก organic Graph API), `metric` table ต้อง split organic/paid, dashboard ROI ใหม่ — ประเมินคร่าว = ขนาดเท่า Phase 2 อีกรอบ
+- **เลื่อน timeline ทุกอย่าง** — ถ้าแทรกก่อน Phase 5 จบ จะดัน dashboard/comment/multi-platform ออกไป
+- **Compliance surface โต** — ads_management scope ทำให้ Meta review เข้มขึ้น (ตอนนี้ Dev Mode พออยู่เพราะ organic scope เท่านั้น — เพิ่ม ads scope อาจบังคับ review + Business Verification)
+- **เงินจริงเข้ามาในระบบ** — budget allocation ผิด = เสียเงินจริง ต้องมี guard/limit เข้มกว่า organic publish ที่แค่โพสต์ผิด
+
+### ทางเลือก B: แยกเป็น project/ระบบต่างหาก
+
+ข้อดี:
+- **Content Hub จบ Phase 5 ได้ตามแผนไม่สะดุด** — scope ปัจจุบัน stable, ไม่มี rework `metric`/ranking กลางทาง
+- **Risk แยกขาด** — ระบบ ads พังหรือ token หลุด ไม่กระทบ publish/dashboard organic; เงินจริงอยู่คนละระบบ blast radius เล็กกว่า
+- ตัดสินใจ build/buy ได้อิสระ — อาจใช้ Meta Ads Manager ตรงๆ ไปก่อน (ฟรี ไม่ต้องเขียนเลย) แล้วค่อยประเมินว่าคุ้มสร้างเองไหม
+- Meta App Review ของ Content Hub อยู่ branch Dev Mode ต่อได้
+
+ข้อเสีย:
+- **ข้อมูล ROI แตกสองระบบ** — เทียบ organic payout กับ ad spend ต่อ content ต้อง export มารวมมือ หรือสร้าง integration เพิ่มทีหลัง (ซึ่งก็คืองาน integration อีกก้อน)
+- Ranking engine ไม่เห็น paid signal — คำแนะนำ platform ไม่รู้ว่า content ไหนกำลัง boost อยู่
+- Login/จัดการ 2 ระบบ, duplicate concept (content list, platform account) ในระยะยาว
+
+### คำแนะนำ
+
+**เริ่มแบบ B-lite ก่อน**: ใช้ Meta Ads Manager / TikTok Ads ตรงๆ (ไม่เขียนโค้ด) ระหว่าง build Phase 2-5 ให้จบ → เก็บ requirement จริงจากการใช้งาน → ตัดสิน A (รวมเป็น Phase 7) ตอน Phase 5 จบ เมื่อมี data ว่า ads workflow ไหนทำซ้ำบ่อยพอที่จะคุ้ม automate. เหตุผล: ตอนนี้ยังไม่เคยยิง ads ผ่านระบบเลย requirement เป็นการเดา — build ก่อนใช้เสี่ยง build ผิด, และ scope A ใหญ่พอจะดัน Phase 3-5 (dashboard/comment ที่ยืนยันต้องการแล้ว) ออกไปหลายเดือน

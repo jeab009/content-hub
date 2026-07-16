@@ -39,12 +39,11 @@ function assertPasswordMeetsPolicy(password: string, userInputs: string[]): void
 }
 
 /**
- * Phase 1.5 placeholder split across the three content pillars. Explicitly
- * marked `isProvisional: true` with a note calling out that this is a
- * default, not a real business decision — see bussiness_rule.md and
- * System Analyst Phase 1.5 approval notes. Nothing reads this table yet
- * (Phase 3 ranking engine will); seeding it now just avoids Phase 3 needing
- * a data migration to backfill starter values.
+ * Pillar ratio split confirmed by the admin on 2026-07-16 (originally the
+ * Phase 1.5 provisional placeholder; admin adopted the recommended values as
+ * final — see bussiness_rule.md). Nothing reads this table yet (Phase 3
+ * ranking engine will); seeding it now just avoids Phase 3 needing a data
+ * migration to backfill starter values.
  */
 const PILLAR_RATIO_SEED: Array<{
   contentPillar: 'product' | 'drama' | 'comedy';
@@ -56,11 +55,11 @@ const PILLAR_RATIO_SEED: Array<{
 ];
 
 const PILLAR_RATIO_NOTE =
-  'default placeholder pending admin confirmation — do not treat as final business decision';
+  'confirmed by admin 2026-07-16 (adopted recommended default) — see bussiness_rule.md';
 
 /**
- * Phase 1.5 placeholder posting cadence per platform. Same "provisional,
- * not a real decision" caveat as PILLAR_RATIO_SEED above.
+ * Posting cadence per platform, confirmed by the admin on 2026-07-16 (same
+ * adoption of the recommended defaults as PILLAR_RATIO_SEED above).
  */
 const CADENCE_SEED: Array<{
   platform: 'facebook' | 'youtube' | 'tiktok' | 'line_oa';
@@ -86,11 +85,11 @@ async function seedPillarRatioPolicies(effectiveFrom: Date): Promise<void> {
         contentPillar: seed.contentPillar,
         targetRatioPct: seed.targetRatioPct,
         effectiveFrom,
-        isProvisional: true,
+        isProvisional: false,
         createdByNote: PILLAR_RATIO_NOTE,
       },
     });
-    console.log(`Seed: created provisional pillar ratio policy for ${seed.contentPillar}.`);
+    console.log(`Seed: created pillar ratio policy for ${seed.contentPillar}.`);
   }
 }
 
@@ -110,10 +109,10 @@ async function seedPlatformCadenceTargets(effectiveFrom: Date): Promise<void> {
         targetPostsPerPeriod: seed.targetPostsPerPeriod,
         periodUnit: seed.periodUnit,
         effectiveFrom,
-        isProvisional: true,
+        isProvisional: false,
       },
     });
-    console.log(`Seed: created provisional platform cadence target for ${seed.platform}.`);
+    console.log(`Seed: created platform cadence target for ${seed.platform}.`);
   }
 }
 

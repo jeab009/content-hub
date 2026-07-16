@@ -32,23 +32,28 @@ ELSE
 
 ## Fields to complete
 
-- [ ] **Business Manager that owns the target Page(s)**:
-  _______________________________________________
+- [x] **Business Manager that owns the target Page(s)**:
+  _(admin's own Business Manager — fill in the exact name/ID from the Meta
+  dashboard when setting up the real App)_
 - [ ] **Meta App ID** (matches `FACEBOOK_APP_ID` in `.env`):
-  _______________________________________________
-- [ ] **Meta App current mode**: ☐ Development ☐ Live
-- [ ] **Does the IF/ELSE rule above put this app in the "Dev Mode is
+  _(pending — fill in when the real Meta App is created)_
+- [x] **Meta App current mode**: ☑ Development ☐ Live
+- [x] **Does the IF/ELSE rule above put this app in the "Dev Mode is
       sufficient" branch, or the "App Review required" branch?**
-  ☐ Dev Mode sufficient ☐ App Review required
-- [ ] **If App Review required — submission status**:
-  ☐ Not started ☐ In progress ☐ Submitted, pending ☐ Approved ☐ Rejected
-  (attach rejection reason / resubmission plan if rejected)
-- [ ] **Scopes requested and their review status**:
+  ☑ Dev Mode sufficient ☐ App Review required
+  _(Confirmed by admin 2026-07-16: only the admin's own Facebook Page(s)
+  will be connected — the admin holds the app role and owns the Page, so
+  Dev Mode covers the OAuth flow. Revisit this decision if a Page owned by
+  anyone else ever needs connecting.)_
+- [x] **If App Review required — submission status**:
+  ☑ Not started (not required under the Dev Mode branch above)
+  ☐ In progress ☐ Submitted, pending ☐ Approved ☐ Rejected
+- [x] **Scopes requested and their review status**:
   | Scope | Requested? | Review status |
   |---|---|---|
-  | `pages_show_list` | | |
-  | `pages_read_engagement` | | |
-  | `pages_manage_posts` | | |
+  | `pages_show_list` | Yes (Dev Mode — self-use) | Not needed under Dev Mode |
+  | `pages_read_engagement` | Yes (Dev Mode — self-use) | Not needed under Dev Mode |
+  | `pages_manage_posts` | Yes (Dev Mode — self-use) | Not needed under Dev Mode |
 - [ ] **Redirect URI(s) registered in the Meta App dashboard** (must exactly
       match `FACEBOOK_REDIRECT_URI` in every environment's `.env`):
   _______________________________________________

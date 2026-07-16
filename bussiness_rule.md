@@ -19,6 +19,21 @@ Confirmed business rules only (not tech/design detail — see `makedown.md` for 
 - ต้อง log ว่า admin ยิงตามคำแนะนำระบบ หรือ override เลือกเอง — ใช้ปรับ ranking model ทีหลัง (suggestion.md)
 - Admin ต้องมีทางเลือก override platform นอกคำแนะนำได้เสมอ (edge case: sale ด่วน, compliance เฉพาะ platform)
 
+## Content Policy (confirmed 2026-07-16)
+
+- **Pillar ratio**: product 40% / drama 30% / comedy 30% — admin ยืนยันใช้ตามค่า recommend, ไม่ provisional แล้ว
+- **Posting cadence**: Facebook 7 โพสต์/สัปดาห์, YouTube 3 โพสต์/สัปดาห์ — ยืนยันแล้ว (TikTok/LINE จะกำหนดเมื่อเข้า Phase 5)
+
+## Budget/Timeline (decided 2026-07-16)
+
+- Admin เลื่อนการกำหนดตัวเลข budget/timeline ไป**กำหนดตอน phase UAT** — plan ปัจจุบันเรียงตาม dependency order (S/M/L) ไม่ใช่ calendar date, แปลงเป็น dated schedule ได้ทันทีเมื่อได้ตัวเลข
+
+## Meta App Review (decided 2026-07-16)
+
+- Facebook Page ที่ connect = **Page ของ admin เองเท่านั้น** → เข้า branch "Dev Mode sufficient" ตาม decision rule ใน docs/meta-app-review-status.md — **ไม่ต้อง submit App Review** ตอนนี้
+- ต้อง revisit ทันทีถ้ามี Page ของคนอื่นต้อง connect ในอนาคต
+- ค้างกรอก: Meta App ID + Business Manager ID จริงจาก Meta dashboard (ตอนสร้าง App จริง)
+
 ## Target Audience
 
 - Target age 23-45 ปี (ตั้งต้น) — พิจารณาแบ่ง sub-segment 23-30 / 31-45 เพื่อ tailor content style (ยัง open, suggestion.md)
