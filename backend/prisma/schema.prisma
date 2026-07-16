@@ -1,0 +1,205 @@
+// Content Hub — Phase 1 database schema
+//
+// IMPORTANT (System Analyst security decision #9): Prisma enum migrations must
+// be treated as ADDITIVE-ONLY. Never remove or reorder existing enum values in
+// a migration — Postgres enum value removal/reorder is destructive and cannot
+// be safely rolled back once rows reference the value. Only ever append new
+// values. This is a process rule (not enforceable by Prisma itself), documented
+// here and in docs/security-decisions.md.
+//
+// IMPORTANT (System Analyst security decision #5): raw SQL escape hatches
+// ($queryRawUnsafe / $executeRawUnsafe) are BANNED across this codebase. Only
+// Prisma's parameterized query builder (or $queryRaw / $executeRaw with
+// tagged-template parameter binding, used only where Prisma's query builder
+// truly cannot express the query — e.g. the CHECK constraint below, which is
+// DDL added by hand in a migration file, not a runtime query) may be used.
+// See .eslintrc.cjs `no-restricted-properties` rule.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  admin
+}
+
+enum Platform {
+  facebook
+  youtube
+  tiktok
+  line
+}
+
+enum ConnectedAccountStatus {
+  connected
+  disconnected
+  expired
+  revoked
+}
+
+enum ContentType {
+  video
+  image
+  text
+}
+
+enum ContentStatus {
+  draft
+  ready
+  archived
+}
+
+enum LicensingStatus {
+  unlicensed
+  pending_review
+  licensed
+  exempt
+}
+
+enum PostStatus {
+  draft
+  scheduled
+  posted
+  failed
+  cancelled
+}
+
+enum MetricSource {
+  api
+  manual
+}
+
+enum Sentiment {
+  positive
+  negative
+  neutral
+}
+
+model User {
+  id                  String    @id @default(uuid()) @db.Uuid
+  name                String
+  email               String    @unique
+  passwordHash        String    @map("password_hash")
+  role                UserRole  @default(admin)
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime? @map("locked_until")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  connectedAccounts ConnectedAccount[]
+  contents          Content[]          @relation("ContentCreatedBy")
+  executedPosts     Post[]             @relation("PostExecutedBy")
+
+  @@map("users")
+}
+
+model ConnectedAccount {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  userId                String                 @map("user_id") @db.Uuid
+  platform              Platform
+  platformAccountId     String                 @map("platform_account_id")
+  platformAccountName   String                 @map("platform_account_name")
+  // Nullable by deviation from the literal spec ("text", not marked nullable):
+  // the mandatory security fix "DELETE /connected-accounts/:id ... overwrite
+  // encrypted token columns to null" requires this column to accept NULL.
+  // See docs/security-decisions.md for the reasoning.
+  accessTokenEncrypted  String?                @map("access_token_encrypted") @db.Text
+  refreshTokenEncrypted String?                @map("refresh_token_encrypted") @db.Text
+  tokenExpiresAt        DateTime               @map("token_expires_at")
+  scopes                String[]
+  status                ConnectedAccountStatus @default(connected)
+  connectedAt           DateTime               @default(now()) @map("connected_at")
+  disconnectedAt        DateTime?              @map("disconnected_at")
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, platform, platformAccountId])
+  @@index([status])
+  @@map("connected_accounts")
+}
+
+model Content {
+  id               String          @id @default(uuid()) @db.Uuid
+  type             ContentType
+  title            String
+  mediaUrl         String          @map("media_url")
+  caption          String?
+  targetAgeMin     Int             @map("target_age_min")
+  targetAgeMax     Int             @map("target_age_max")
+  status           ContentStatus   @default(draft)
+  licensingStatus  LicensingStatus @default(unlicensed) @map("licensing_status")
+  licenseNotes     String?         @map("license_notes")
+  licenseExpiresAt DateTime?       @map("license_expires_at") @db.Date
+  createdBy        String          @map("created_by") @db.Uuid
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  creator User   @relation("ContentCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  posts   Post[]
+
+  @@index([status, createdBy, licensingStatus])
+  @@map("contents")
+}
+
+model Post {
+  id             String     @id @default(uuid()) @db.Uuid
+  contentId      String     @map("content_id") @db.Uuid
+  platform       Platform
+  priorityScore  Decimal?   @map("priority_score") @db.Decimal(10, 4)
+  recommendedAt  DateTime?  @map("recommended_at")
+  scheduledAt    DateTime?  @map("scheduled_at")
+  postedAt       DateTime?  @map("posted_at")
+  status         PostStatus @default(draft)
+  executedBy     String?    @map("executed_by") @db.Uuid
+  externalPostId String?    @map("external_post_id")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+
+  content  Content   @relation(fields: [contentId], references: [id], onDelete: Restrict)
+  executor User?     @relation("PostExecutedBy", fields: [executedBy], references: [id], onDelete: SetNull)
+  metrics  Metric[]
+  comments Comment[]
+
+  @@index([contentId, status, scheduledAt])
+  @@map("posts")
+}
+
+model Metric {
+  id          String       @id @default(uuid()) @db.Uuid
+  postId      String       @map("post_id") @db.Uuid
+  platform    Platform
+  reach       Int
+  engagement  Int
+  revenue     Decimal      @db.Decimal(12, 2)
+  source      MetricSource
+  collectedAt DateTime     @map("collected_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Restrict)
+
+  @@index([postId, collectedAt])
+  @@map("metrics")
+}
+
+model Comment {
+  id          String     @id @default(uuid()) @db.Uuid
+  postId      String     @map("post_id") @db.Uuid
+  platform    Platform
+  author      String
+  text        String
+  sentiment   Sentiment?
+  collectedAt DateTime   @map("collected_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Restrict)
+
+  @@index([postId])
+  @@map("comments")
+}
