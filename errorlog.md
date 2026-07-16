@@ -29,6 +29,13 @@ Test failures / runtime errors found during build. Full root-cause detail lives 
 
 - Phase 1.5 QA: SIGNED OFF. 39/39 tests, migration verified on real Postgres, seed idempotency verified ×2, live boot clean, 8 extra adversarial edge cases on copyright gate all fail-closed. Zero code bugs.
 
+## Carry-forward to Phase 2 kickoff (from Bug Fixer close-out, 2026-07-16)
+
+- QC review + QA baseline ของ Phase 2 WIP commits ก่อนเขียนโค้ดใหม่ — migration `20260716054701_phase2_publish_cms_ranking` ถูก apply ใน demo DB แล้ว ต้อง treat schema เป็น already-live
+- `ExceptionFilter` log 401 ปกติเป็น ERROR level พร้อม stack trace — จะเกิด alert noise เมื่อมี monitoring จริง, ลด expected auth failure เป็น WARN ใน Phase 2
+- QA-OBS-1: เพิ่ม DB UNIQUE constraint ก่อน Phase 3
+- QA-OBS-2: sync bussiness_rule.md กับ TargetAgeSegment enum
+
 ## Open / not yet tested
 
 - No live remote CI run performed
