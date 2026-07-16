@@ -21,9 +21,11 @@
 - **Pillar ratio + cadence**: ยืนยันใช้ค่า recommend — product 40/drama 30/comedy 30, FB 7/wk, YT 3/wk. `is_provisional` flip เป็น false แล้วทั้ง seed + live DB
 - **Meta App Review**: connect Page ตัวเองเท่านั้น → Dev Mode sufficient, ไม่ต้อง submit review. ค้างกรอก App ID/Business Manager จริง
 
+- **Ads/Paid**: ตัดสินแล้ว (2026-07-16) — **B-lite**: ไม่รวมเข้าระบบช่วง Phase 2-5, ใช้ Meta Ads Manager/TikTok Ads ตรงๆ, เก็บ requirement จริง, revisit เป็น Phase 7 ตอน Phase 5 จบ
+
 ## Remaining open decision
 
-- **Ads/Paid module**: admin ขอดูข้อดี-ข้อเสีย แยก vs รวม ก่อนตัดสิน (ส่งให้แล้ว 2026-07-16 — ดู [suggestion.md](suggestion.md), รอคำตอบ)
+- ไม่มี decision ค้างแล้ว — ทุก gate ก่อน Phase 2 ปิดครบ (budget/timeline ไปกำหนดตอน UAT ตามตกลง). Phase 2 พร้อมเริ่มเมื่อ admin สั่ง
 - Gap analysis อื่นๆ (ดู [makedown.md](makedown.md) §10): comment SLA/escalation, copyright workflow — จัดเข้า Phase 4/1.5 แล้วใน plan v2
 
 ## Build status (2026-07-16)

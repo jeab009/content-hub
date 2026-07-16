@@ -48,7 +48,13 @@ Confirmed business rules only (not tech/design detail — see `makedown.md` for 
 - Token ที่ disconnect แล้วต้อง null ทิ้งเสมอ (ไม่เก็บ token ที่ไม่ใช้งานแล้ว) — บังคับให้ schema ต้อง nullable แม้ spec เดิมระบุ non-nullable (documented deviation)
 - Production ต้องรันผ่าน HTTPS เท่านั้น (`NODE_ENV=production` บังคับ `Secure` cookie)
 
+## Ads/Paid Module (decided 2026-07-16)
+
+- **ตัดสินใจ: B-lite** — Ads/Paid **ไม่รวม**เข้า Content Hub ช่วง Phase 2-5. ระหว่างนี้ admin ยิง ads ผ่าน Meta Ads Manager / TikTok Ads โดยตรง (ไม่เขียนโค้ด, ไม่มี integration)
+- เก็บ requirement จากการใช้งานจริงระหว่าง Phase 2-5 → **ตัดสินใหม่ตอน Phase 5 จบ** ว่าคุ้มสร้างเป็น Phase 7 หรือไม่ (ดู pros/cons ใน suggestion.md)
+- ผลพวง: Meta App อยู่ branch Dev Mode ต่อได้ (ไม่ต้องขอ ads_management scope), `metric` table ไม่ต้อง split organic/paid ตอนนี้, ranking engine v1/v2 ใช้ organic signal เท่านั้นตามแผนเดิม
+
 ## Scope Boundary (rules ว่า "ไม่ทำ" ในแต่ละ phase)
 
 - Phase 1: ไม่มี CMS, ranking, dashboard UI, publish logic, platform อื่นนอก Facebook
-- ระบบปัจจุบันทั้งหมด = **organic distribution only** — ไม่มี ads/paid spend module (gap, ยังไม่ตัดสินใจว่าจะเพิ่ม — ดู makedown.md §10)
+- ระบบทั้งหมดถึง Phase 5 = **organic distribution only** — ads/paid ตัดสินแล้วว่าแยกไว้นอกระบบ (B-lite ด้านบน) จนกว่าจะ revisit หลัง Phase 5

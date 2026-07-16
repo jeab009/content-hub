@@ -47,3 +47,9 @@
 > 1. ยังไม่ได้กำหนดขอไปทำใน phase UAT 2.ใช้ตามที่ recommend 3. ขอข้อดีและข้อเสียระหว่างแยกกับรวมกัน 4. ยืนยันตามที่กรอก
 
 **Output**: (1) budget/timeline เลื่อนไปกำหนดตอน phase UAT — บันทึกใน [bussiness_rule.md](bussiness_rule.md); (2) pillar ratio 40/30/30 + cadence FB 7/wk, YT 3/wk ยืนยันเป็น final — flip `is_provisional=false` ทั้ง seed.ts และ live DB, tests 39/39 ผ่าน; (3) เขียนข้อดี-ข้อเสีย Ads/Paid แยก vs รวม + คำแนะนำ B-lite (ใช้ Ads Manager ตรงๆ ก่อน, ตัดสินรวมเป็น Phase 7 ตอน Phase 5 จบ) ใน [suggestion.md](suggestion.md) — รอ admin ตัดสิน; (4) Meta doc ยังเป็น template เปล่า — admin ยืนยันว่า connect Page ตัวเองเท่านั้น → กรอก branch "Dev Mode sufficient" ใน [docs/meta-app-review-status.md](docs/meta-app-review-status.md), ไม่ต้อง submit App Review, ค้างแค่ App ID/Business Manager จริง
+
+## 2026-07-16 — Ads/Paid: ตัดสินตาม B-lite
+
+> ทำตามแนะนำได้เลยครับ
+
+**Output**: บันทึก Ads/Paid = **B-lite** เป็น business rule ใน [bussiness_rule.md](bussiness_rule.md) — แยกนอกระบบช่วง Phase 2-5 (ใช้ Meta Ads Manager/TikTok Ads ตรงๆ), เก็บ requirement จริง, revisit เป็น Phase 7 candidate ตอน Phase 5 จบ. อัพเดท phase map ใน [makedown.md](makedown.md) §9.5, ปิด open decision ใน [memory.md](memory.md) — **ไม่มี decision ค้างก่อน Phase 2 แล้ว**

@@ -83,3 +83,5 @@
 ### คำแนะนำ
 
 **เริ่มแบบ B-lite ก่อน**: ใช้ Meta Ads Manager / TikTok Ads ตรงๆ (ไม่เขียนโค้ด) ระหว่าง build Phase 2-5 ให้จบ → เก็บ requirement จริงจากการใช้งาน → ตัดสิน A (รวมเป็น Phase 7) ตอน Phase 5 จบ เมื่อมี data ว่า ads workflow ไหนทำซ้ำบ่อยพอที่จะคุ้ม automate. เหตุผล: ตอนนี้ยังไม่เคยยิง ads ผ่านระบบเลย requirement เป็นการเดา — build ก่อนใช้เสี่ยง build ผิด, และ scope A ใหญ่พอจะดัน Phase 3-5 (dashboard/comment ที่ยืนยันต้องการแล้ว) ออกไปหลายเดือน
+
+**✓ Admin ตัดสินตาม B-lite แล้ว (2026-07-16)** — บันทึกเป็น business rule ใน [bussiness_rule.md](bussiness_rule.md). ระหว่าง Phase 2-5 แนะนำ admin จดบันทึกทุกครั้งที่ยิง ads ด้วยมือ: content ไหน, platform, budget, ผลลัพธ์ — จะเป็น requirement input ตรงๆ ตอน revisit Phase 7

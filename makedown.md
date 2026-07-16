@@ -130,7 +130,7 @@ Phase map ปรับใหม่ — เพิ่ม Phase 1.5 เป็น bl
 | 4 | Comment Aggregation (+SLA/escalation) | ยังไม่เริ่ม — **PDPA gate**: ต้องมี DPA กับ sentiment vendor + retention policy ก่อน ship | Phase 2 (ขนานกับ 3 ได้) |
 | 5 | TikTok/LINE + Ranking v2 + Export | ยังไม่เริ่ม | Phase 3+4 |
 | 6 | Optimization Backlog (A/B test, competitor benchmark) | backlog, ยังไม่ commit | Phase 5 |
-| — | Ads/Paid Module | **รอ stakeholder ตัดสิน** — scope ใหม่ทั้งก้อน ไม่ schedule | แยก scoping |
+| — | Ads/Paid Module | **ตัดสินแล้ว (2026-07-16): B-lite** — แยกนอกระบบ, ใช้ Ads Manager ตรงๆ ช่วง Phase 2-5, revisit เป็น Phase 7 candidate ตอน Phase 5 จบ | revisit หลัง Phase 5 |
 
 **Phase 1.5 สิ่งที่ส่งมอบแล้ว**: enum 6 ตัว, `Content` +5 fields (`content_pillar` nullable/fail-closed, `target_age_segment` nullable รอยืนยัน, `copyright_cleared` 3-state, `copyright_notes`, `copyright_evidence_url`), ตารางใหม่ `content_assets`/`pillar_ratio_policies`/`platform_cadence_targets`, `CopyrightGateService.canMarkCopyrightCleared()` (comedy ผ่านเลย, drama/product ต้องมี evidence URL), seed provisional (40/30/30, FB 7/wk, YT 3/wk — `is_provisional=true` ทุกแถว)
 
