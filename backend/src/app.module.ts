@@ -7,6 +7,7 @@ import { AuditLogModule } from './common/audit/audit-log.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ConnectedAccountsModule } from './modules/connected-accounts/connected-accounts.module';
 import { QueueModule } from './modules/queue/queue.module';
+import { ContentModule } from './modules/content/content.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { QueueModule } from './modules/queue/queue.module';
     AuthModule,
     ConnectedAccountsModule,
     QueueModule,
+    ContentModule,
   ],
 })
 export class AppModule {}

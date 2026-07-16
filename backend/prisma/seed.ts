@@ -38,9 +38,92 @@ function assertPasswordMeetsPolicy(password: string, userInputs: string[]): void
   }
 }
 
+/**
+ * Phase 1.5 placeholder split across the three content pillars. Explicitly
+ * marked `isProvisional: true` with a note calling out that this is a
+ * default, not a real business decision — see bussiness_rule.md and
+ * System Analyst Phase 1.5 approval notes. Nothing reads this table yet
+ * (Phase 3 ranking engine will); seeding it now just avoids Phase 3 needing
+ * a data migration to backfill starter values.
+ */
+const PILLAR_RATIO_SEED: Array<{
+  contentPillar: 'product' | 'drama' | 'comedy';
+  targetRatioPct: number;
+}> = [
+  { contentPillar: 'product', targetRatioPct: 40 },
+  { contentPillar: 'drama', targetRatioPct: 30 },
+  { contentPillar: 'comedy', targetRatioPct: 30 },
+];
+
+const PILLAR_RATIO_NOTE =
+  'default placeholder pending admin confirmation — do not treat as final business decision';
+
+/**
+ * Phase 1.5 placeholder posting cadence per platform. Same "provisional,
+ * not a real decision" caveat as PILLAR_RATIO_SEED above.
+ */
+const CADENCE_SEED: Array<{
+  platform: 'facebook' | 'youtube' | 'tiktok' | 'line_oa';
+  targetPostsPerPeriod: number;
+  periodUnit: 'week' | 'month';
+}> = [
+  { platform: 'facebook', targetPostsPerPeriod: 7, periodUnit: 'week' },
+  { platform: 'youtube', targetPostsPerPeriod: 3, periodUnit: 'week' },
+];
+
+async function seedPillarRatioPolicies(effectiveFrom: Date): Promise<void> {
+  for (const seed of PILLAR_RATIO_SEED) {
+    const existing = await prisma.pillarRatioPolicy.findFirst({
+      where: { contentPillar: seed.contentPillar },
+    });
+    if (existing) {
+      console.log(`Seed: pillar ratio policy for ${seed.contentPillar} already exists — skipping.`);
+      continue;
+    }
+
+    await prisma.pillarRatioPolicy.create({
+      data: {
+        contentPillar: seed.contentPillar,
+        targetRatioPct: seed.targetRatioPct,
+        effectiveFrom,
+        isProvisional: true,
+        createdByNote: PILLAR_RATIO_NOTE,
+      },
+    });
+    console.log(`Seed: created provisional pillar ratio policy for ${seed.contentPillar}.`);
+  }
+}
+
+async function seedPlatformCadenceTargets(effectiveFrom: Date): Promise<void> {
+  for (const seed of CADENCE_SEED) {
+    const existing = await prisma.platformCadenceTarget.findFirst({
+      where: { platform: seed.platform },
+    });
+    if (existing) {
+      console.log(`Seed: platform cadence target for ${seed.platform} already exists — skipping.`);
+      continue;
+    }
+
+    await prisma.platformCadenceTarget.create({
+      data: {
+        platform: seed.platform,
+        targetPostsPerPeriod: seed.targetPostsPerPeriod,
+        periodUnit: seed.periodUnit,
+        effectiveFrom,
+        isProvisional: true,
+      },
+    });
+    console.log(`Seed: created provisional platform cadence target for ${seed.platform}.`);
+  }
+}
+
 async function main(): Promise<void> {
   const email = process.env.SEED_ADMIN_EMAIL ?? 'admin@example.com';
   const name = process.env.SEED_ADMIN_NAME ?? 'Content Hub Admin';
+
+  const today = new Date();
+  await seedPillarRatioPolicies(today);
+  await seedPlatformCadenceTargets(today);
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {

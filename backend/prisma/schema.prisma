@@ -67,6 +67,7 @@ enum PostStatus {
   posted
   failed
   cancelled
+  posted_unconfirmed // Phase 2 addition, appended per the additive-only enum rule above. See docs/publish-orchestration-addendum.md.
 }
 
 enum MetricSource {
@@ -78,6 +79,64 @@ enum Sentiment {
   positive
   negative
   neutral
+}
+
+// --- Phase 1.5 additions (Compliance & Schema Gate) ---------------------
+// See docs/security-decisions.md / System Analyst Phase 1.5 approval for
+// the full rationale. These enums/models are schema-only in this
+// iteration: no controller, no publish-flow wiring yet (Phase 2+).
+
+enum ContentPillar {
+  product
+  drama
+  comedy
+}
+
+// DB enum labels use the literal age-band strings from the business rule
+// doc (e.g. "18-22"), which aren't valid bare Prisma identifiers (leading
+// digit, hyphen), hence the @map on each value.
+enum TargetAgeSegment {
+  age_18_22   @map("18-22")
+  age_23_30   @map("23-30")
+  age_31_45   @map("31-45")
+  age_46_plus @map("46+")
+}
+
+// Deliberately not a boolean (System Analyst Condition #3): "blocked" must
+// be distinguishable from "not yet reviewed" so a blocked item can never be
+// confused with one that simply hasn't been checked yet.
+enum CopyrightClearance {
+  not_checked
+  cleared
+  blocked
+}
+
+// Separate from the existing `Platform` enum (which is Phase 1's
+// connected-account/post/metric/comment platform set and, per the
+// additive-only enum rule at the top of this file, must never be renamed).
+// The Analyst's Phase 1.5 spec names this platform "line_oa" specifically
+// (LINE Official Account) rather than reusing Phase 1's generic "line" —
+// kept as its own enum so the two concerns don't get conflated and Phase 1
+// data is untouched.
+enum AssetPlatform {
+  facebook
+  youtube
+  tiktok
+  line_oa
+}
+
+// DB enum labels are the literal ratio strings ("1:1" etc.), not valid bare
+// identifiers, hence @map on each value.
+enum AspectRatio {
+  ratio_1_1  @map("1:1")
+  ratio_4_5  @map("4:5")
+  ratio_9_16 @map("9:16")
+  ratio_16_9 @map("16:9")
+}
+
+enum CadencePeriodUnit {
+  week
+  month
 }
 
 model User {
@@ -126,26 +185,104 @@ model ConnectedAccount {
 }
 
 model Content {
-  id               String          @id @default(uuid()) @db.Uuid
-  type             ContentType
-  title            String
-  mediaUrl         String          @map("media_url")
-  caption          String?
-  targetAgeMin     Int             @map("target_age_min")
-  targetAgeMax     Int             @map("target_age_max")
-  status           ContentStatus   @default(draft)
-  licensingStatus  LicensingStatus @default(unlicensed) @map("licensing_status")
-  licenseNotes     String?         @map("license_notes")
-  licenseExpiresAt DateTime?       @map("license_expires_at") @db.Date
-  createdBy        String          @map("created_by") @db.Uuid
-  createdAt        DateTime        @default(now()) @map("created_at")
-  updatedAt        DateTime        @updatedAt @map("updated_at")
+  id                   String             @id @default(uuid()) @db.Uuid
+  type                 ContentType
+  title                String
+  mediaUrl             String             @map("media_url")
+  caption              String?
+  targetAgeMin         Int                @map("target_age_min")
+  targetAgeMax         Int                @map("target_age_max")
+  status               ContentStatus      @default(draft)
+  licensingStatus      LicensingStatus    @default(unlicensed) @map("licensing_status")
+  licenseNotes         String?            @map("license_notes")
+  licenseExpiresAt     DateTime?          @map("license_expires_at") @db.Date
+  // Phase 2 additions (upload metadata) — nullable: Phase 1 rows and any
+  // future text-only content have no uploaded file to describe.
+  fileSizeBytes        BigInt?            @map("file_size_bytes")
+  mimeType             String?            @map("mime_type")
+  // Phase 1.5 additions (Compliance & Schema Gate) ------------------------
+  // `contentPillar` is nullable: unlike `copyrightCleared` (which has an
+  // honest "not yet reviewed" state to default to), there is no neutral
+  // value among product/drama/comedy that would accurately describe
+  // existing/legacy content. Rather than fabricate one, this stays
+  // unclassified (null) until an admin assigns it. The copyright-gate
+  // service (see copyright-gate.service.ts) treats null the same as a
+  // risk-bearing pillar — fail closed, evidence required — so leaving this
+  // unset can never widen what's allowed to be marked cleared.
+  contentPillar        ContentPillar?     @map("content_pillar")
+  // Nullable, intentionally unused this iteration — sub-segment targeting
+  // is still an open business decision (see bussiness_rule.md "Target
+  // Audience"). Column exists now so it doesn't require another migration
+  // once that decision lands.
+  targetAgeSegment     TargetAgeSegment?  @map("target_age_segment")
+  copyrightCleared     CopyrightClearance @default(not_checked) @map("copyright_cleared")
+  copyrightNotes       String?            @map("copyright_notes")
+  // Required (by the copyright-gate service, not a DB constraint) for
+  // drama/product pillar content before copyrightCleared may become
+  // `cleared` — System Analyst Condition #3.
+  copyrightEvidenceUrl String?            @map("copyright_evidence_url")
+  createdBy            String             @map("created_by") @db.Uuid
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
 
-  creator User   @relation("ContentCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  creator User           @relation("ContentCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
   posts   Post[]
+  assets  ContentAsset[]
 
   @@index([status, createdBy, licensingStatus])
   @@map("contents")
+}
+
+// Phase 1.5 addition. One row per platform-specific render/crop of a piece
+// of Content (e.g. a 9:16 TikTok cut vs. a 1:1 Facebook feed cut of the
+// same source). Schema-only this iteration — nothing writes to this table
+// yet (Phase 2 CMS asset pipeline will).
+model ContentAsset {
+  id          String        @id @default(uuid()) @db.Uuid
+  contentId   String        @map("content_id") @db.Uuid
+  platform    AssetPlatform
+  aspectRatio AspectRatio   @map("aspect_ratio")
+  mediaUrl    String        @map("media_url")
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  content Content @relation(fields: [contentId], references: [id], onDelete: Restrict)
+
+  @@index([contentId])
+  @@map("content_assets")
+}
+
+// Phase 1.5 addition. Admin-configurable target split of content pillars.
+// Seeded with an explicitly-provisional placeholder split (see
+// prisma/seed.ts) pending a real admin decision — nothing reads this table
+// yet (Phase 3 ranking engine will).
+model PillarRatioPolicy {
+  id             String        @id @default(uuid()) @db.Uuid
+  contentPillar  ContentPillar @map("content_pillar")
+  targetRatioPct Decimal       @map("target_ratio_pct") @db.Decimal(5, 2)
+  effectiveFrom  DateTime      @map("effective_from") @db.Date
+  isProvisional  Boolean       @default(true) @map("is_provisional")
+  createdByNote  String?       @map("created_by_note")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  @@map("pillar_ratio_policies")
+}
+
+// Phase 1.5 addition. Admin-configurable per-platform posting cadence
+// target. Seeded with placeholder values (see prisma/seed.ts) pending a
+// real admin decision — nothing reads this table yet (Phase 3 ranking
+// engine will).
+model PlatformCadenceTarget {
+  id                   String            @id @default(uuid()) @db.Uuid
+  platform             AssetPlatform
+  targetPostsPerPeriod Int               @map("target_posts_per_period")
+  periodUnit           CadencePeriodUnit @map("period_unit")
+  effectiveFrom        DateTime          @map("effective_from") @db.Date
+  isProvisional        Boolean           @default(true) @map("is_provisional")
+  createdAt            DateTime          @default(now()) @map("created_at")
+  updatedAt            DateTime          @updatedAt @map("updated_at")
+
+  @@map("platform_cadence_targets")
 }
 
 model Post {
@@ -159,6 +296,9 @@ model Post {
   status         PostStatus @default(draft)
   executedBy     String?    @map("executed_by") @db.Uuid
   externalPostId String?    @map("external_post_id")
+  // Phase 2 addition: optimistic-concurrency guard for the publish
+  // orchestrator's conditional UPDATEs. See docs/publish-orchestration-addendum.md §2.
+  version        Int        @default(0)
   createdAt      DateTime   @default(now()) @map("created_at")
   updatedAt      DateTime   @updatedAt @map("updated_at")
 
