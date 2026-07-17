@@ -14,6 +14,10 @@ export class ContentResponseDto {
   licenseExpiresAt!: Date | null;
   fileSizeBytes!: string | null;
   mimeType!: string | null;
+  contentPillar!: string | null;
+  copyrightCleared!: string;
+  copyrightNotes!: string | null;
+  copyrightEvidenceUrl!: string | null;
   createdBy!: string;
   createdAt!: Date;
   updatedAt!: Date;
@@ -35,6 +39,10 @@ export class ContentResponseDto {
     // here so the HTTP layer never has to special-case it.
     dto.fileSizeBytes = content.fileSizeBytes !== null ? content.fileSizeBytes.toString() : null;
     dto.mimeType = content.mimeType;
+    dto.contentPillar = content.contentPillar;
+    dto.copyrightCleared = content.copyrightCleared;
+    dto.copyrightNotes = content.copyrightNotes;
+    dto.copyrightEvidenceUrl = content.copyrightEvidenceUrl;
     dto.createdBy = content.createdBy;
     dto.createdAt = content.createdAt;
     dto.updatedAt = content.updatedAt;

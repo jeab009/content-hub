@@ -20,6 +20,8 @@ export type AuditAction =
   | 'content_updated'
   | 'content_archived'
   | 'content_uploaded'
+  | 'content_asset_added'
+  | 'content_asset_removed'
   // Phase 2 — ranking
   | 'ranking_recomputed'
   // Phase 2 — publish orchestration (see docs/publish-orchestration-addendum.md)

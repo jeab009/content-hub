@@ -1,4 +1,10 @@
-import { ContentStatus, ContentType, LicensingStatus } from '@prisma/client';
+import {
+  ContentPillar,
+  ContentStatus,
+  ContentType,
+  CopyrightClearance,
+  LicensingStatus,
+} from '@prisma/client';
 import {
   IsDateString,
   IsEnum,
@@ -58,4 +64,25 @@ export class UpdateContentDto {
   @IsOptional()
   @IsDateString()
   licenseExpiresAt?: string;
+
+  // --- Phase 2 compliance fields. Setting `copyrightCleared: cleared` must
+  // pass the copyright gate, and setting `status: ready` additionally
+  // requires the (merged) record to already be cleared — see ContentService.
+  @IsOptional()
+  @IsEnum(ContentPillar)
+  contentPillar?: ContentPillar;
+
+  @IsOptional()
+  @IsEnum(CopyrightClearance)
+  copyrightCleared?: CopyrightClearance;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  copyrightNotes?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2048)
+  copyrightEvidenceUrl?: string;
 }

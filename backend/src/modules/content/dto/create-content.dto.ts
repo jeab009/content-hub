@@ -1,4 +1,4 @@
-import { ContentType, LicensingStatus } from '@prisma/client';
+import { ContentPillar, ContentType, CopyrightClearance, LicensingStatus } from '@prisma/client';
 import {
   IsDateString,
   IsEnum,
@@ -61,6 +61,27 @@ export class CreateContentDto {
   /** true = create directly as `ready`; false/omitted = `draft` ("Save Draft" vs "Mark Ready"). */
   @IsOptional()
   markReady?: boolean;
+
+  // --- Phase 2 compliance fields (Phase 1.5 schema, first writable here).
+  // A `ready` transition is blocked unless copyrightCleared is `cleared`
+  // AND the copyright gate passes — see ContentService + CopyrightGateService.
+  @IsOptional()
+  @IsEnum(ContentPillar)
+  contentPillar?: ContentPillar;
+
+  @IsOptional()
+  @IsEnum(CopyrightClearance)
+  copyrightCleared?: CopyrightClearance;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  copyrightNotes?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2048)
+  copyrightEvidenceUrl?: string;
 
   @IsOptional()
   @IsInt()

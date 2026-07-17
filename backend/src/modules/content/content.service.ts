@@ -1,21 +1,41 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Content, ContentStatus, Prisma } from '@prisma/client';
+import { Content, ContentStatus, CopyrightClearance, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../../common/audit/audit-log.service';
+import { CopyrightGateService, CopyrightGateInput } from './copyright-gate.service';
+import { assertMediaUrlIsOwned } from './media-url.util';
 import { CreateContentDto } from './dto/create-content.dto';
 import { UpdateContentDto } from './dto/update-content.dto';
 import { ListContentQueryDto } from './dto/list-content-query.dto';
+
+/** The compliance-relevant slice of a Content row the ready-gate evaluates. */
+interface ComplianceState extends CopyrightGateInput {
+  copyrightCleared: CopyrightClearance;
+}
 
 @Injectable()
 export class ContentService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditLog: AuditLogService,
+    private readonly copyrightGate: CopyrightGateService,
   ) {}
 
   async create(dto: CreateContentDto, userId: string): Promise<Content> {
     this.assertAgeRangeIsValid(dto.targetAgeMin, dto.targetAgeMax);
-    this.assertMediaUrlIsOwned(dto.mediaUrl);
+    assertMediaUrlIsOwned(dto.mediaUrl);
+
+    const compliance: ComplianceState = {
+      contentPillar: dto.contentPillar ?? null,
+      copyrightEvidenceUrl: dto.copyrightEvidenceUrl ?? null,
+      copyrightCleared: dto.copyrightCleared ?? CopyrightClearance.not_checked,
+    };
+    if (compliance.copyrightCleared === CopyrightClearance.cleared) {
+      this.assertClearanceIsEligible(compliance);
+    }
+    if (dto.markReady) {
+      this.assertReadyTransitionAllowed(compliance);
+    }
 
     const content = await this.prisma.content.create({
       data: {
@@ -31,6 +51,10 @@ export class ContentService {
         licenseExpiresAt: dto.licenseExpiresAt ? new Date(dto.licenseExpiresAt) : null,
         fileSizeBytes: dto.fileSizeBytes !== undefined ? BigInt(dto.fileSizeBytes) : null,
         mimeType: dto.mimeType ?? null,
+        contentPillar: compliance.contentPillar,
+        copyrightCleared: compliance.copyrightCleared,
+        copyrightNotes: dto.copyrightNotes ?? null,
+        copyrightEvidenceUrl: compliance.copyrightEvidenceUrl,
         createdBy: userId,
       },
     });
@@ -52,6 +76,23 @@ export class ContentService {
     const nextMax = dto.targetAgeMax ?? existing.targetAgeMax;
     this.assertAgeRangeIsValid(nextMin, nextMax);
 
+    // The state the row will be in AFTER this update — validation must run
+    // against the merged record, not the patch or the stale row alone.
+    const compliance: ComplianceState = {
+      contentPillar: dto.contentPillar !== undefined ? dto.contentPillar : existing.contentPillar,
+      copyrightEvidenceUrl:
+        dto.copyrightEvidenceUrl !== undefined
+          ? dto.copyrightEvidenceUrl
+          : existing.copyrightEvidenceUrl,
+      copyrightCleared: dto.copyrightCleared ?? existing.copyrightCleared,
+    };
+    if (dto.copyrightCleared === CopyrightClearance.cleared) {
+      this.assertClearanceIsEligible(compliance);
+    }
+    if (dto.status === ContentStatus.ready) {
+      this.assertReadyTransitionAllowed(compliance);
+    }
+
     const data: Prisma.ContentUpdateInput = {
       ...(dto.type !== undefined && { type: dto.type }),
       ...(dto.title !== undefined && { title: dto.title }),
@@ -63,6 +104,12 @@ export class ContentService {
       ...(dto.licenseNotes !== undefined && { licenseNotes: dto.licenseNotes }),
       ...(dto.licenseExpiresAt !== undefined && {
         licenseExpiresAt: dto.licenseExpiresAt ? new Date(dto.licenseExpiresAt) : null,
+      }),
+      ...(dto.contentPillar !== undefined && { contentPillar: dto.contentPillar }),
+      ...(dto.copyrightCleared !== undefined && { copyrightCleared: dto.copyrightCleared }),
+      ...(dto.copyrightNotes !== undefined && { copyrightNotes: dto.copyrightNotes }),
+      ...(dto.copyrightEvidenceUrl !== undefined && {
+        copyrightEvidenceUrl: dto.copyrightEvidenceUrl,
       }),
     };
 
@@ -131,18 +178,39 @@ export class ContentService {
   }
 
   /**
-   * The upload endpoint is the only place mediaUrl values are minted (local
-   * disk adapter returns `/uploads/<uuid>.<ext>`). Content creation only
-   * accepts a mediaUrl that matches that shape — never an arbitrary
-   * client-supplied external URL — so this endpoint can't be used as an
-   * open redirect / SSRF-adjacent primitive for referencing attacker-hosted
-   * content as if it were locally stored.
+   * Approved architecture invariant: "`ready` status is unreachable while
+   * content.copyright_cleared != cleared". Enforced here at CRUD time (the
+   * primary gate); the Pass B publish flow will recheck at publish time as
+   * defense in depth. Both conditions are checked against the post-update
+   * state: the clearance flag must be `cleared` AND the pillar-based
+   * evidence rule must (still) hold — so a row whose flag was set while
+   * evidence rules were looser (or set directly in the DB) can never slip
+   * into `ready`.
    */
-  private assertMediaUrlIsOwned(mediaUrl: string): void {
-    if (!/^\/uploads\/[a-f0-9-]{36}\.(jpg|png|mp4)$/.test(mediaUrl)) {
+  private assertReadyTransitionAllowed(compliance: ComplianceState): void {
+    if (compliance.copyrightCleared !== CopyrightClearance.cleared) {
       throw new BadRequestException(
-        'mediaUrl must reference a file previously returned by POST /api/content/upload',
+        `Content cannot be marked ready: copyrightCleared is "${compliance.copyrightCleared}" ` +
+          'but must be "cleared" first.',
       );
     }
+    this.assertClearanceIsEligible(compliance);
+  }
+
+  /**
+   * CopyrightGateService rule (System Analyst Condition #3): only `comedy`
+   * pillar content may be cleared without evidence; `drama`, `product`, and
+   * unclassified (null pillar — fail closed) content require a non-empty
+   * copyrightEvidenceUrl.
+   */
+  private assertClearanceIsEligible(compliance: CopyrightGateInput): void {
+    if (this.copyrightGate.canMarkCopyrightCleared(compliance)) {
+      return;
+    }
+    const pillarLabel: string = compliance.contentPillar ?? 'unclassified (no pillar assigned)';
+    throw new BadRequestException(
+      `Copyright gate: ${pillarLabel} content requires a non-empty copyrightEvidenceUrl ` +
+        'before it can be copyright-cleared (only the comedy pillar is exempt).',
+    );
   }
 }
