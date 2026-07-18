@@ -51,6 +51,12 @@
 - **จาก QA**: sync `bussiness_rule.md` กับ `TargetAgeSegment` enum ที่ ship จริง (มี `18-22`/`46+` เกินจากที่ doc ระบุ)
 - ~~**Provisional values ต้องถาม admin ยืนยัน**~~ — ยืนยันแล้ว 2026-07-16: ใช้ค่า recommend เป็น final (40/30/30, FB 7/wk, YT 3/wk), flip `is_provisional=false` แล้ว — badge PROVISIONAL ใน UI Phase 2 ไม่จำเป็นแล้ว
 
+## Suggestion จาก Phase 2 backend QC/QA (2026-07-18) — non-blocking, ทำทีหลังได้
+
+- **QC-M1**: `SchedulerService.cadenceOverview()` ยิง 1 query ต่อ platform (N+1) — 4 platform ยังโอเค, refactor เป็น `groupBy` ตอน Phase 3
+- **QA note**: Redis db1 แชร์ระหว่าง throttle keys กับ session keys — `FLUSHDB` ล้าง throttle จะ log out sessions ทั้งหมดด้วย. แนะนำแยก namespace/DB (operational, ไม่ใช่ bug)
+- **API contract สำหรับ Pass C frontend** (จาก QC): Post response shape (status enum: draft/scheduled/posted/posted_unconfirmed/failed), 401 (wrong password step-up) vs 403 (not admin) แยก retry logic, ranking reasoning jsonb shape `{engineVersion,factors[],total}`, overrideReason max 2000 chars, publish state transitions (posted_unconfirmed ยิงซ้ำไม่ได้ ต้อง resolve ก่อน)
+
 ## Ads/Paid Module — ข้อดี/ข้อเสีย แยก vs รวม (2026-07-16, ตอบคำถาม admin)
 
 ### ทางเลือก A: รวมเข้า Content Hub (Phase 7+)
