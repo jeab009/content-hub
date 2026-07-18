@@ -53,3 +53,27 @@
 > ทำตามแนะนำได้เลยครับ
 
 **Output**: บันทึก Ads/Paid = **B-lite** เป็น business rule ใน [bussiness_rule.md](bussiness_rule.md) — แยกนอกระบบช่วง Phase 2-5 (ใช้ Meta Ads Manager/TikTok Ads ตรงๆ), เก็บ requirement จริง, revisit เป็น Phase 7 candidate ตอน Phase 5 จบ. อัพเดท phase map ใน [makedown.md](makedown.md) §9.5, ปิด open decision ใน [memory.md](memory.md) — **ไม่มี decision ค้างก่อน Phase 2 แล้ว**
+
+## 2026-07-17..18 — Phase 2 backend build + QC/QA
+
+> (ดำเนินการต่อ Phase 2)
+
+**Output**: build Phase 2 backend เต็ม — CMS (ContentController CRUD+upload+asset, copyright gate), Ranking v1 (explainable 4-factor, ranking_scores), Publish flow (step-up re-auth, server-side was_override, idempotency, posted_unconfirmed resolution), FB+YouTube adapters, Google OAuth, Scheduler overview. commits `ce524ac`+`4516195`. QC APPROVED, QA เจอ 3 bug (dup-publish critical, ready-gate bypass high, tie-break medium) → แก้หมด `9a75424`, QA SIGNED OFF. 225 tests. ดู [errorlog.md](errorlog.md) §Phase 2
+
+## 2026-07-18 — Phase 2 frontend Pass C1 (CMS UI)
+
+> (ดำเนินการต่อ frontend)
+
+**Output**: Pass C1 CMS UI (`c5195a1`) — Content library (list/filter/archive), Content editor (create/edit, media upload, per-platform asset), copyright gate ฝั่ง UI (evidence URL required drama/product, shared logic + test)
+
+## 2026-07-18 — ดำเนินการต่อที่ค้างไว้ (Pass C2 Scheduler/Publish UI)
+
+> ดำเนินการต่อที่ค้างไว้
+
+**Output**: จบ Phase 2 frontend — สร้างหน้า `/scheduler` (cadence cards, ready-to-publish table, rank/re-rank, PublishConfirmModal พร้อม explainable score reasoning + override reason + step-up password) และ `/posts` (status filter, Retry modal, posted_unconfirmed resolution). commit `910e4b1`. Verify end-to-end บน Docker stack ผ่าน browser: rank, publish override (server wasOverride=true), retry 200, resolve-not-posted. typecheck+lint+jest 24/24 ผ่าน. Dev-env issue: reset admin password ใน demo DB ให้ตรง backend/.env (ดู [errorlog.md](errorlog.md) P2F-OBS-1)
+
+## 2026-07-18 — เก็บงานลง doc files
+
+> เก็บทั้งหมดลงใน memory.md, การทำงานลง makedown.md, prompt ลง history_prompt.md, suggestion/comment ลง suggestion.md, issue/error ลง errorlog.md, business rule ลง bussiness_rule.md
+
+**Output**: sync ทุก doc file กับงาน Phase 2 backend + frontend Pass C1/C2 — [memory.md](memory.md) build status, [makedown.md](makedown.md) §9.5 table + §9.6 frontend detail, [history_prompt.md](history_prompt.md) prompt log, [errorlog.md](errorlog.md) §Phase 2 Frontend (P2F-OBS-1/2), [suggestion.md](suggestion.md) frontend note. ไม่มี business rule ใหม่ (Pass C = UI implement ตาม rule เดิม)

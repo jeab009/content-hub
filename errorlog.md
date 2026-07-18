@@ -44,6 +44,15 @@ Test failures / runtime errors found during build. Full root-cause detail lives 
 - Phase 2B (ranking/publish/adapters): 126→210 tests. Verified live: ranking + 4-factor reasoning, step-up re-auth (empty→400/wrong→401/correct→ok), server-side was_override both directions, override reason persisted, idempotency claim (unit-tested "no double post"). Committed `4516195`.
 - Two interruptions from Anthropic session limits mid-pass; both resumed and verified by main thread (lint/typecheck/tests/docker boot/curl) before committing — no fake success.
 
+## Phase 2 Frontend (Pass C — 2026-07-18)
+
+| ID | Severity | Found by | Summary | Status |
+|---|---|---|---|---|
+| P2F-OBS-1 | Low (dev env, not code) | main-thread verify | Login ทดสอบไม่ผ่าน (401): admin password ใน demo Postgres volume เป็น random ที่ seed script gen ตอน first boot แล้ว print ลง backend log ครั้งเดียว — log rotate/หายไปแล้ว. Backend `.env` มี `SEED_ADMIN_PASSWORD=TestPassw0rd!2026XYZ` แต่ user row สร้างก่อนหน้าด้วยรหัสอื่น (seed skip ถ้า user มีอยู่แล้ว). แก้: argon2.hash ค่าใน .env แล้ว UPDATE user row + reset `failedLoginAttempts=0`. ไม่ใช่ code defect — เป็น demo-data drift | Resolved (dev DB) — production seed ไม่กระทบ; ถ้า re-verify ครั้งหน้า login ด้วย `admin@example.com` / ค่าใน backend/.env |
+| P2F-OBS-2 | Info | main-thread verify | Publish ทุกอันจบเป็น `failed` เพราะ connected-account token stale (P2-OBS-1 เดิม, AES-GCM decrypt fail จาก APP_ENCRYPTION_KEY คนละตัว). UI จัดการถูก: แสดง failed + ปุ่ม Retry, resolution flow ทำงาน. Full mock-publish success path ยังไม่เคยรันผ่าน UI (unit test cover แล้ว) | Open — re-connect FB/YouTube accounts กับ key ปัจจุบันเพื่อเห็น posted จริงผ่าน UI |
+
+- **Frontend tests**: jest 24/24 ผ่าน (publish-logic 12 + copyright-gate 12), lint zero-warning, typecheck clean, `next build` (Docker image) ผ่าน. ไม่มี test fail / ไม่มี runtime error ใหม่จาก code.
+
 ## Carry-forward to Phase 2 kickoff (from Bug Fixer close-out, 2026-07-16)
 
 - QC review + QA baseline ของ Phase 2 WIP commits ก่อนเขียนโค้ดใหม่ — migration `20260716054701_phase2_publish_cms_ranking` ถูก apply ใน demo DB แล้ว ต้อง treat schema เป็น already-live
@@ -54,4 +63,5 @@ Test failures / runtime errors found during build. Full root-cause detail lives 
 ## Open / not yet tested
 
 - No live remote CI run performed
-- Phase 2+ features (CMS, ranking, publish, dashboard, comments, multi-platform) not built yet — no tests exist for them (note: partial Phase 2 WIP exists uncommitted-then-committed separately, untested by QA)
+- Phase 2 (CMS/ranking/publish backend + frontend) เสร็จ + verified. **ยังไม่ build**: dashboard (Phase 3), comment aggregation (Phase 4), TikTok/LINE (Phase 5) — no tests exist yet
+- Full mock-publish success path ยังไม่เคยเห็น posted จริงผ่าน UI (token stale, P2F-OBS-2) — unit test cover แล้ว

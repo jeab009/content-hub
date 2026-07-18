@@ -91,3 +91,10 @@
 **เริ่มแบบ B-lite ก่อน**: ใช้ Meta Ads Manager / TikTok Ads ตรงๆ (ไม่เขียนโค้ด) ระหว่าง build Phase 2-5 ให้จบ → เก็บ requirement จริงจากการใช้งาน → ตัดสิน A (รวมเป็น Phase 7) ตอน Phase 5 จบ เมื่อมี data ว่า ads workflow ไหนทำซ้ำบ่อยพอที่จะคุ้ม automate. เหตุผล: ตอนนี้ยังไม่เคยยิง ads ผ่านระบบเลย requirement เป็นการเดา — build ก่อนใช้เสี่ยง build ผิด, และ scope A ใหญ่พอจะดัน Phase 3-5 (dashboard/comment ที่ยืนยันต้องการแล้ว) ออกไปหลายเดือน
 
 **✓ Admin ตัดสินตาม B-lite แล้ว (2026-07-16)** — บันทึกเป็น business rule ใน [bussiness_rule.md](bussiness_rule.md). ระหว่าง Phase 2-5 แนะนำ admin จดบันทึกทุกครั้งที่ยิง ads ด้วยมือ: content ไหน, platform, budget, ผลลัพธ์ — จะเป็น requirement input ตรงๆ ตอน revisit Phase 7
+
+## Phase 2 Frontend notes (2026-07-18)
+
+- **Publish override audit UX**: PublishConfirmModal บังคับกรอก override reason ก่อน enable ปุ่ม publish เมื่อ admin เลือก platform != recommended — ตรงตาม business rule "log override" (bussiness_rule.md Publish Authority). Backend recompute wasOverride เอง client แค่ mirror ป้องกัน tamper
+- **Explainable score ใน UI**: ScoreReasoning component โชว์ factor breakdown (weight/value/contribution/inputs) ให้ admin เห็นเหตุผล ranking ก่อนกดยิง — ลด black-box, ช่วย admin ตัดสิน override อย่างมีข้อมูล
+- **แนะนำก่อน production**: (1) re-connect FB/YouTube accounts กับ APP_ENCRYPTION_KEY ปัจจุบันเพื่อทดสอบ posted จริงผ่าน UI (ตอนนี้ token stale ทำให้ publish จบเป็น failed เสมอ — P2F-OBS-2); (2) เพิ่ม auto-refresh/polling ในหน้า Posts เพราะ dispatch async — ตอนนี้ต้อง reload เอง; (3) PROVISIONAL badge (System Analyst condition) ยังไม่โชว์ pillar-ratio/cadence ที่เป็น provisional ใน scheduler UI — ควรเพิ่มถ้าตัวเลข seed ยัง provisional (แต่ flip เป็น false แล้วตาม memory.md ปี 07-16 จึงอาจไม่จำเป็น)
+- **Dashboard (Phase 3) suggestion**: cadence card ใน scheduler reuse ได้เป็น base ของ KPI card ใน dashboard overview — pattern เดียวกัน (progress + status badge)

@@ -125,7 +125,7 @@ Phase map ปรับใหม่ — เพิ่ม Phase 1.5 เป็น bl
 |---|---|---|---|
 | 1 | Foundation | **เสร็จ, verified** | — |
 | 1.5 | Compliance & Schema Gate | **เสร็จ (2026-07-16)** — schema migrate แล้ว, copyright gate service + tests, seed provisional defaults; เหลือ Meta App Review submission (ค้าง admin) | Phase 1 |
-| 2 | Content CMS + Ranking v1 + Manual Publish (FB+YouTube) | ยังไม่เริ่ม (มี WIP บางส่วนใน tree — commit แยกไว้, ยังไม่ผ่าน QA) | Phase 1.5 |
+| 2 | Content CMS + Ranking v1 + Manual Publish (FB+YouTube) | **เสร็จ (2026-07-18)** — backend QC APPROVED + QA SIGNED OFF (225 tests); frontend Pass C1 (CMS UI, `c5195a1`) + Pass C2 (Scheduler/Publish/Posts UI, `910e4b1`), verified end-to-end บน Docker stack | Phase 1.5 |
 | 3 | Dashboard v1 (revenue/reach + KPI alert) | ยังไม่เริ่ม | Phase 2 |
 | 4 | Comment Aggregation (+SLA/escalation) | ยังไม่เริ่ม — **PDPA gate**: ต้องมี DPA กับ sentiment vendor + retention policy ก่อน ship | Phase 2 (ขนานกับ 3 ได้) |
 | 5 | TikTok/LINE + Ranking v2 + Export | ยังไม่เริ่ม | Phase 3+4 |
@@ -135,6 +135,20 @@ Phase map ปรับใหม่ — เพิ่ม Phase 1.5 เป็น bl
 **Phase 1.5 สิ่งที่ส่งมอบแล้ว**: enum 6 ตัว, `Content` +5 fields (`content_pillar` nullable/fail-closed, `target_age_segment` nullable รอยืนยัน, `copyright_cleared` 3-state, `copyright_notes`, `copyright_evidence_url`), ตารางใหม่ `content_assets`/`pillar_ratio_policies`/`platform_cadence_targets`, `CopyrightGateService.canMarkCopyrightCleared()` (comedy ผ่านเลย, drama/product ต้องมี evidence URL), seed provisional (40/30/30, FB 7/wk, YT 3/wk — `is_provisional=true` ทุกแถว)
 
 **System Analyst conditions (9 ข้อ, gate phase ถัดไป)**: strip PII ก่อนส่ง sentiment vendor + DPA + retention 12 เดือน (gate Phase 4), Meta scope justification matrix (gate Phase 2-4 review), `copyright_evidence_url` บังคับ drama/product (ทำแล้วใน 1.5), manual metric append-only (gate Phase 3), step-up re-auth publish/revenue/reply + CSRF ทุก mutating route ใหม่ + audit_log รวมศูนย์ (gate Phase 2-4), publish idempotency + server-side recompute `was_override` (gate Phase 2), alert dedup (gate Phase 3/4), PlatformAdapter contract tests (gate Phase 5), PROVISIONAL badge ใน UI (gate Phase 2)
+
+## 9.6 Phase 2 Frontend (Pass C) — เสร็จ 2026-07-18
+
+Stack: Next.js 14 App Router + Bootstrap 5 (ตาม frontend เดิม Phase 1). ทุกหน้า client component, auth ผ่าน session cookie + CSRF header (api-client wrapper).
+
+**Pass C1 — CMS UI** (`c5195a1`): หน้า Content library (`/content` list+filter+archive), Content editor (`/content/new`, `/content/[id]/edit`) — สร้าง/แก้ content, upload media, จัดการ per-platform asset, copyright gate enforcement ฝั่ง UI (ต้องมี evidence URL ก่อน mark cleared สำหรับ drama/product; logic shared ใน `copyright-gate.ts` + test)
+
+**Pass C2 — Scheduler + Publish + Posts UI** (`910e4b1`):
+- **`/scheduler`** — cadence progress cards ต่อ platform (published/target ต่อ period + pace badge on_pace/under_target/target_met), ตาราง ready-to-publish backlog พร้อม latest ranking scores + recommended platform, ปุ่ม Rank/Re-rank (เรียก `POST /contents/:id/rank`)
+- **`PublishConfirmModal`** — เลือก platform (default = recommended), แสดง score + explainable factor breakdown (`ScoreReasoning` component, ตาราง weight/value/contribution/inputs), บังคับกรอก override reason เมื่อเลือก platform ≠ recommended, บังคับ step-up password. Client-side logic (`publish-logic.ts` + test 12 เคส) mirror backend แต่ backend ยังเป็น source of truth ของ `wasOverride`
+- **`/posts`** — ตาราง post ทั้งหมด + status filter, map content title, ปุ่ม Retry (เฉพาะ draft/failed, step-up password modal), resolution ของ `posted_unconfirmed`: "Mark posted" (กรอก external post ID) / "Not posted" (reopen เป็น failed)
+- Nav เพิ่ม link Scheduler + Posts
+
+**Verify (browser จริงบน Docker stack)**: login → rank content (score เปลี่ยน, recommended flip YouTube 0.625) → publish override เป็น Facebook (server ตอบ `wasOverride=true`, override reason persisted) → retry dispatch 200 → resolve-not-posted (post กลับเป็น failed, version bump ใน DB). typecheck + lint + jest 24/24 ผ่าน, ไม่มี console error. ดู [errorlog.md](errorlog.md) §Phase 2 Frontend
 
 ## 10. Gap Analysis (2026-07-16) — ยังไม่อยู่ใน scope ปัจจุบัน
 
