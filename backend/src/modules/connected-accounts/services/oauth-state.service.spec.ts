@@ -73,4 +73,41 @@ describe('OAuthStateService', () => {
     service.validate(session, 'wrong-state');
     expect(session.fbOauthState).toBeUndefined();
   });
+
+  describe('per-provider isolation (google vs facebook)', () => {
+    it('stores google state under its own session keys', () => {
+      const session = fakeSession();
+      const state = service.generate(session, 'google');
+
+      expect(session.googleOauthState).toBe(state);
+      expect(session.fbOauthState).toBeUndefined();
+    });
+
+    it('a google state can never validate a facebook callback (and vice versa)', () => {
+      const session = fakeSession();
+      const googleState = service.generate(session, 'google');
+      const facebookState = service.generate(session, 'facebook');
+
+      expect(service.validate(session, googleState, 'facebook')).toBe(false);
+      expect(service.validate(session, facebookState, 'google')).toBe(false);
+    });
+
+    it('validates and consumes a google state for a google callback', () => {
+      const session = fakeSession();
+      const state = service.generate(session, 'google');
+
+      expect(service.validate(session, state, 'google')).toBe(true);
+      expect(session.googleOauthState).toBeUndefined();
+      expect(service.validate(session, state, 'google')).toBe(false); // replay blocked
+    });
+
+    it('an in-flight facebook handshake survives a google generate/validate cycle', () => {
+      const session = fakeSession();
+      const facebookState = service.generate(session, 'facebook');
+      const googleState = service.generate(session, 'google');
+
+      expect(service.validate(session, googleState, 'google')).toBe(true);
+      expect(service.validate(session, facebookState, 'facebook')).toBe(true);
+    });
+  });
 });

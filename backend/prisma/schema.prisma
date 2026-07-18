@@ -139,6 +139,16 @@ enum CadencePeriodUnit {
   month
 }
 
+// Phase 2 Pass B addition. Version of the ranking engine that produced a
+// RankingScore row. v1 is the explainable rule-based engine
+// (RankingEngineService); v2 is reserved for a future learned/refined
+// engine so historical scores stay attributable to the logic that made
+// them. Additive-only, like every enum in this file.
+enum EngineVersion {
+  v1
+  v2
+}
+
 model User {
   id                  String    @id @default(uuid()) @db.Uuid
   name                String
@@ -225,9 +235,10 @@ model Content {
   createdAt            DateTime           @default(now()) @map("created_at")
   updatedAt            DateTime           @updatedAt @map("updated_at")
 
-  creator User           @relation("ContentCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
-  posts   Post[]
-  assets  ContentAsset[]
+  creator       User           @relation("ContentCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  posts         Post[]
+  assets        ContentAsset[]
+  rankingScores RankingScore[]
 
   @@index([status, createdBy, licensingStatus])
   @@map("contents")
@@ -299,16 +310,51 @@ model Post {
   // Phase 2 addition: optimistic-concurrency guard for the publish
   // orchestrator's conditional UPDATEs. See docs/publish-orchestration-addendum.md §2.
   version        Int        @default(0)
+  // Phase 2 Pass B additions (ranking-informed publish). All nullable
+  // because legacy Phase 1 rows predate the ranking engine.
+  // `recommendedPlatform` / `wasOverride` are ALWAYS recomputed server-side
+  // from the latest ranking_scores at publish time — never accepted from
+  // the client (System Analyst hard constraint).
+  recommendedPlatform AssetPlatform? @map("recommended_platform")
+  selectedPlatform    AssetPlatform? @map("selected_platform")
+  wasOverride         Boolean        @default(false) @map("was_override")
+  overrideReason      String?        @map("override_reason")
+  rankingScoreId      String?        @map("ranking_score_id") @db.Uuid
   createdAt      DateTime   @default(now()) @map("created_at")
   updatedAt      DateTime   @updatedAt @map("updated_at")
 
-  content  Content   @relation(fields: [contentId], references: [id], onDelete: Restrict)
-  executor User?     @relation("PostExecutedBy", fields: [executedBy], references: [id], onDelete: SetNull)
-  metrics  Metric[]
-  comments Comment[]
+  content      Content       @relation(fields: [contentId], references: [id], onDelete: Restrict)
+  executor     User?         @relation("PostExecutedBy", fields: [executedBy], references: [id], onDelete: SetNull)
+  // The ranking_scores row (selected platform's latest score at publish
+  // time) that informed this post. SetNull (not Restrict) because the FK is
+  // an informational back-reference, not an ownership edge.
+  rankingScore RankingScore? @relation(fields: [rankingScoreId], references: [id], onDelete: SetNull)
+  metrics      Metric[]
+  comments     Comment[]
 
   @@index([contentId, status, scheduledAt])
   @@map("posts")
+}
+
+// Phase 2 Pass B addition. One row per (content, platform) per ranking
+// computation. `reasoning` stores the full explainable factor breakdown
+// ({factors: [{name, input, weight, value, contribution}], total}) so the
+// UI can render *why* a platform was recommended — the engine is a
+// transparent weighted rule set, never a black box.
+model RankingScore {
+  id            String        @id @default(uuid()) @db.Uuid
+  contentId     String        @map("content_id") @db.Uuid
+  platform      AssetPlatform
+  score         Decimal       @db.Decimal(10, 4)
+  reasoning     Json
+  engineVersion EngineVersion @map("engine_version")
+  computedAt    DateTime      @default(now()) @map("computed_at")
+
+  content Content @relation(fields: [contentId], references: [id], onDelete: Restrict)
+  posts   Post[]
+
+  @@index([contentId, computedAt])
+  @@map("ranking_scores")
 }
 
 model Metric {

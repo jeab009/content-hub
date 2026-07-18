@@ -32,6 +32,12 @@ export interface AppConfig {
     graphApiVersion: string;
     scopes: string[];
   };
+  google: {
+    clientId: string;
+    clientSecret: string;
+    redirectUri: string;
+    scopes: string[];
+  };
   upload: {
     storageDir: string;
     maxImageBytes: number;
@@ -81,6 +87,23 @@ export default (): { app: AppConfig } => ({
         'pages_show_list,pages_read_engagement,pages_manage_posts'
       )
         .split(',')
+        .map((scope) => scope.trim())
+        .filter(Boolean),
+    },
+    google: {
+      // Optional (default '') so existing .env files keep booting; the
+      // Google connect flow returns a clear error if used unconfigured.
+      clientId: process.env.GOOGLE_CLIENT_ID ?? '',
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
+      redirectUri:
+        process.env.GOOGLE_REDIRECT_URI ??
+        'http://localhost:4000/api/connected-accounts/google/callback',
+      // Google scopes are space-separated (unlike Meta's comma convention).
+      scopes: (
+        process.env.GOOGLE_OAUTH_SCOPES ??
+        'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly'
+      )
+        .split(' ')
         .map((scope) => scope.trim())
         .filter(Boolean),
     },

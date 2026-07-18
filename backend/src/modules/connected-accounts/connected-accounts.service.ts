@@ -9,11 +9,13 @@ import { ConnectedAccount, Platform } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../../common/audit/audit-log.service';
 import { FacebookGraphApiClient } from './services/facebook-graph-api.client';
+import { GoogleOAuthApiClient } from './services/google-oauth-api.client';
 import { TokenEncryptionService } from './services/token-encryption.service';
 import { ConnectedAccountResponseDto } from './dto/connected-account-response.dto';
 
 const SECONDS_PER_DAY = 24 * 60 * 60;
 const DEFAULT_LONG_LIVED_TOKEN_TTL_SECONDS = 60 * SECONDS_PER_DAY; // Meta long-lived page tokens are typically non-expiring, but we store a conservative estimate when Meta doesn't return expires_in.
+const DEFAULT_GOOGLE_TOKEN_TTL_SECONDS = 60 * 60; // Google access tokens live ~1 hour when expires_in is absent.
 
 @Injectable()
 export class ConnectedAccountsService {
@@ -22,6 +24,7 @@ export class ConnectedAccountsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly facebookClient: FacebookGraphApiClient,
+    private readonly googleClient: GoogleOAuthApiClient,
     private readonly tokenEncryption: TokenEncryptionService,
     private readonly auditLog: AuditLogService,
   ) {}
@@ -100,6 +103,79 @@ export class ConnectedAccountsService {
       action: 'connected_account.oauth.connect',
       result: 'success',
       meta: { platform: 'facebook', connectedAccountId: account.id },
+    });
+
+    return account;
+  }
+
+  /**
+   * Google/YouTube OAuth callback flow, structurally the mirror of
+   * completeFacebookConnection: exchange code -> fetch own channel ->
+   * encrypt tokens -> upsert ConnectedAccount (platform=youtube). Network
+   * calls are retried once on transport failure; both attempts failing
+   * writes no partial row.
+   */
+  async completeGoogleConnection(userId: string, code: string): Promise<ConnectedAccount> {
+    this.googleClient.assertConfigured();
+
+    const tokens = await this.withOneRetry(() => this.googleClient.exchangeCodeForTokens(code));
+    const channel = await this.withOneRetry(() =>
+      this.googleClient.getOwnChannel(tokens.access_token),
+    );
+
+    if (!channel) {
+      throw new NotFoundException(
+        'No YouTube channel found for this Google account. Create a channel and retry the connection.',
+      );
+    }
+
+    const expiresAt = new Date(
+      Date.now() + (tokens.expires_in ?? DEFAULT_GOOGLE_TOKEN_TTL_SECONDS) * 1000,
+    );
+    const encryptedRefreshToken = tokens.refresh_token
+      ? this.tokenEncryption.encrypt(tokens.refresh_token)
+      : null;
+
+    const account = await this.prisma.connectedAccount.upsert({
+      where: {
+        userId_platform_platformAccountId: {
+          userId,
+          platform: Platform.youtube,
+          platformAccountId: channel.id,
+        },
+      },
+      create: {
+        userId,
+        platform: Platform.youtube,
+        platformAccountId: channel.id,
+        platformAccountName: channel.title,
+        accessTokenEncrypted: this.tokenEncryption.encrypt(tokens.access_token),
+        refreshTokenEncrypted: encryptedRefreshToken,
+        tokenExpiresAt: expiresAt,
+        scopes: this.googleClient.getConfiguredScopes(),
+        status: 'connected',
+        connectedAt: new Date(),
+        disconnectedAt: null,
+      },
+      update: {
+        platformAccountName: channel.title,
+        accessTokenEncrypted: this.tokenEncryption.encrypt(tokens.access_token),
+        // Google only returns refresh_token on the first consent (or with
+        // prompt=consent); never null out a stored one on reconnect.
+        ...(encryptedRefreshToken && { refreshTokenEncrypted: encryptedRefreshToken }),
+        tokenExpiresAt: expiresAt,
+        scopes: this.googleClient.getConfiguredScopes(),
+        status: 'connected',
+        connectedAt: new Date(),
+        disconnectedAt: null,
+      },
+    });
+
+    this.auditLog.record({
+      actor: userId,
+      action: 'connected_account.oauth.connect',
+      result: 'success',
+      meta: { platform: 'youtube', connectedAccountId: account.id },
     });
 
     return account;

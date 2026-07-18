@@ -31,6 +31,18 @@ export const envValidationSchema = Joi.object({
     'pages_show_list,pages_read_engagement,pages_manage_posts',
   ),
 
+  // Google OAuth (YouTube connect flow). Optional with safe defaults —
+  // unlike the Facebook vars above — so existing .env files keep booting;
+  // the connect flow itself errors clearly when used unconfigured.
+  GOOGLE_CLIENT_ID: Joi.string().allow('').default(''),
+  GOOGLE_CLIENT_SECRET: Joi.string().allow('').default(''),
+  GOOGLE_REDIRECT_URI: Joi.string()
+    .uri()
+    .default('http://localhost:4000/api/connected-accounts/google/callback'),
+  GOOGLE_OAUTH_SCOPES: Joi.string().default(
+    'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly',
+  ),
+
   SEED_ADMIN_EMAIL: Joi.string().email().optional(),
   SEED_ADMIN_NAME: Joi.string().optional(),
   SEED_ADMIN_PASSWORD: Joi.string().allow('').optional(),

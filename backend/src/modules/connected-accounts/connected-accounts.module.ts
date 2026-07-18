@@ -3,6 +3,7 @@ import { ConnectedAccountsController } from './connected-accounts.controller';
 import { ConnectedAccountsService } from './connected-accounts.service';
 import { OAuthStateService } from './services/oauth-state.service';
 import { FacebookGraphApiClient } from './services/facebook-graph-api.client';
+import { GoogleOAuthApiClient } from './services/google-oauth-api.client';
 import { TokenEncryptionService } from './services/token-encryption.service';
 
 /**
@@ -18,6 +19,7 @@ import { TokenEncryptionService } from './services/token-encryption.service';
     ConnectedAccountsService,
     OAuthStateService,
     FacebookGraphApiClient,
+    GoogleOAuthApiClient,
     TokenEncryptionService,
   ],
   exports: [ConnectedAccountsService],

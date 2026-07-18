@@ -32,6 +32,14 @@ module.exports = {
     '@typescript-eslint/explicit-function-return-type': 'off',
     '@typescript-eslint/explicit-module-boundary-types': 'off',
     '@typescript-eslint/no-explicit-any': 'error',
+    // Interface-mandated parameters that an implementation doesn't need
+    // (e.g. the Phase 3/4 adapter capability stubs) use the standard `_`
+    // prefix convention instead of being deleted, so signatures stay
+    // aligned with the PlatformAdapter contract.
+    '@typescript-eslint/no-unused-vars': [
+      'error',
+      { args: 'after-used', argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+    ],
     'no-restricted-syntax': [
       'error',
       {

@@ -8,6 +8,9 @@ import { AuthModule } from './modules/auth/auth.module';
 import { ConnectedAccountsModule } from './modules/connected-accounts/connected-accounts.module';
 import { QueueModule } from './modules/queue/queue.module';
 import { ContentModule } from './modules/content/content.module';
+import { RankingModule } from './modules/ranking/ranking.module';
+import { PublishModule } from './modules/publish/publish.module';
+import { SchedulerModule } from './modules/scheduler/scheduler.module';
 
 @Module({
   imports: [
@@ -21,8 +24,13 @@ import { ContentModule } from './modules/content/content.module';
     AuditLogModule,
     AuthModule,
     ConnectedAccountsModule,
+    // QueueModule (BullModule.forRootAsync) must load before PublishModule's
+    // BullModule.registerQueue picks up the shared connection config.
     QueueModule,
     ContentModule,
+    RankingModule,
+    PublishModule,
+    SchedulerModule,
   ],
 })
 export class AppModule {}

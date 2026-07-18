@@ -17,3 +17,6 @@ export const SYSTEM_HEALTH_QUEUE = 'system-health';
 // Note: BullMQ queue names cannot contain ":" (Queue constructor throws
 // "Queue name cannot contain :"), so this uses "-" instead.
 export const TOKEN_REFRESH_QUEUE = 'connected-accounts-refresh-token';
+// Phase 2 Pass B: manual-publish dispatch jobs (PublishModule). Same
+// no-":" naming rule as above.
+export const PUBLISH_QUEUE = 'publish-dispatch';

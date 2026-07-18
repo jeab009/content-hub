@@ -2,6 +2,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ConnectedAccountsService } from './connected-accounts.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { FacebookGraphApiClient } from './services/facebook-graph-api.client';
+import { GoogleOAuthApiClient } from './services/google-oauth-api.client';
 import { TokenEncryptionService } from './services/token-encryption.service';
 import { AuditLogService } from '../../common/audit/audit-log.service';
 
@@ -32,6 +33,7 @@ describe('ConnectedAccountsService ownership checks', () => {
     service = new ConnectedAccountsService(
       prisma as unknown as PrismaService,
       {} as unknown as FacebookGraphApiClient,
+      {} as unknown as GoogleOAuthApiClient,
       {
         decrypt: jest.fn().mockReturnValue('plaintext-token'),
       } as unknown as TokenEncryptionService,
