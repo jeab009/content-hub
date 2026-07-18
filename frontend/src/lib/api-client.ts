@@ -25,7 +25,10 @@ interface RequestOptions {
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = {};
-  if (options.body !== undefined) {
+  const isFormData = options.body instanceof FormData;
+  // For multipart uploads we must NOT set Content-Type — the browser sets it
+  // together with the multipart boundary. JSON bodies keep the explicit header.
+  if (options.body !== undefined && !isFormData) {
     headers['Content-Type'] = 'application/json';
   }
   if (options.csrfToken) {
@@ -36,7 +39,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     method: options.method ?? 'GET',
     credentials: 'include',
     headers,
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    body:
+      options.body === undefined
+        ? undefined
+        : isFormData
+          ? (options.body as FormData)
+          : JSON.stringify(options.body),
   });
 
   if (response.status === 204) {
@@ -73,6 +81,117 @@ export interface ConnectedAccount {
   disconnectedAt: string | null;
 }
 
+// --- Content (CMS) domain types. String unions mirror the backend Prisma
+// enums exactly (see backend/prisma/schema.prisma) — keep them in sync.
+
+export type ContentType = 'video' | 'image' | 'text';
+export type ContentStatus = 'draft' | 'ready' | 'archived';
+export type LicensingStatus = 'unlicensed' | 'pending_review' | 'licensed' | 'exempt';
+export type ContentPillar = 'product' | 'drama' | 'comedy';
+export type CopyrightClearance = 'not_checked' | 'cleared' | 'blocked';
+export type AssetPlatform = 'facebook' | 'youtube' | 'tiktok' | 'line_oa';
+export type AspectRatio = 'ratio_1_1' | 'ratio_4_5' | 'ratio_9_16' | 'ratio_16_9';
+
+export interface Content {
+  id: string;
+  type: ContentType;
+  title: string;
+  mediaUrl: string;
+  caption: string | null;
+  targetAgeMin: number;
+  targetAgeMax: number;
+  status: ContentStatus;
+  licensingStatus: LicensingStatus;
+  licenseNotes: string | null;
+  licenseExpiresAt: string | null;
+  // BigInt is stringified by the backend response DTO — keep it a string here.
+  fileSizeBytes: string | null;
+  mimeType: string | null;
+  contentPillar: ContentPillar | null;
+  copyrightCleared: CopyrightClearance;
+  copyrightNotes: string | null;
+  copyrightEvidenceUrl: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContentAsset {
+  id: string;
+  contentId: string;
+  platform: AssetPlatform;
+  aspectRatio: AspectRatio;
+  mediaUrl: string;
+  createdAt: string;
+}
+
+export interface UploadResult {
+  mediaUrl: string;
+  fileSizeBytes: number;
+  mimeType: string;
+}
+
+/** Only the params the backend list query DTO accepts — anything else 400s. */
+export interface ListContentQuery {
+  type?: ContentType;
+  status?: ContentStatus;
+  licensingStatus?: LicensingStatus;
+  ageBand?: number;
+  search?: string;
+}
+
+export interface CreateContentInput {
+  type: ContentType;
+  title: string;
+  mediaUrl: string;
+  caption?: string;
+  targetAgeMin: number;
+  targetAgeMax: number;
+  licensingStatus: LicensingStatus;
+  licenseNotes?: string;
+  licenseExpiresAt?: string;
+  markReady?: boolean;
+  contentPillar?: ContentPillar;
+  copyrightCleared?: CopyrightClearance;
+  copyrightNotes?: string;
+  copyrightEvidenceUrl?: string;
+  fileSizeBytes?: number;
+  mimeType?: string;
+}
+
+export type UpdateContentInput = Partial<{
+  type: ContentType;
+  title: string;
+  caption: string;
+  targetAgeMin: number;
+  targetAgeMax: number;
+  status: ContentStatus;
+  licensingStatus: LicensingStatus;
+  licenseNotes: string;
+  licenseExpiresAt: string;
+  contentPillar: ContentPillar;
+  copyrightCleared: CopyrightClearance;
+  copyrightNotes: string;
+  copyrightEvidenceUrl: string;
+}>;
+
+export interface CreateContentAssetInput {
+  platform: AssetPlatform;
+  aspectRatio: AspectRatio;
+  mediaUrl: string;
+}
+
+function buildContentQuery(query: ListContentQuery = {}): string {
+  const params = new URLSearchParams();
+  if (query.type) params.set('type', query.type);
+  if (query.status) params.set('status', query.status);
+  if (query.licensingStatus) params.set('licensingStatus', query.licensingStatus);
+  if (query.ageBand !== undefined) params.set('ageBand', String(query.ageBand));
+  if (query.search) params.set('search', query.search);
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
 export const apiClient = {
   login: (email: string, password: string) =>
     request<{ success: true; user: CurrentUser }>('/api/auth/login', {
@@ -93,4 +212,53 @@ export const apiClient = {
 
   disconnectAccount: (id: string, csrfToken: string) =>
     request<void>(`/api/connected-accounts/${id}`, { method: 'DELETE', csrfToken }),
+
+  // --- Content (CMS) endpoints ---
+
+  /** Absolute URL for a stored media path (e.g. `/uploads/…`) for previews. */
+  mediaSrc: (path: string) => (path.startsWith('http') ? path : `${API_BASE_URL}${path}`),
+
+  listContents: (query?: ListContentQuery) =>
+    request<Content[]>(`/api/contents${buildContentQuery(query)}`),
+
+  getContent: (id: string) => request<Content>(`/api/contents/${id}`),
+
+  createContent: (body: CreateContentInput, csrfToken: string) =>
+    request<Content>('/api/contents', { method: 'POST', body, csrfToken }),
+
+  updateContent: (id: string, body: UpdateContentInput, csrfToken: string) =>
+    request<Content>(`/api/contents/${id}`, { method: 'PATCH', body, csrfToken }),
+
+  archiveContent: (id: string, csrfToken: string) =>
+    request<void>(`/api/contents/${id}`, { method: 'DELETE', csrfToken }),
+
+  /**
+   * Uploads a single file via multipart/form-data (field name `file`). The
+   * browser sets the Content-Type + boundary; we only add the CSRF header.
+   */
+  uploadMedia: (file: File, csrfToken: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    return request<UploadResult>('/api/contents/upload', {
+      method: 'POST',
+      body: form,
+      csrfToken,
+    });
+  },
+
+  listAssets: (contentId: string) =>
+    request<ContentAsset[]>(`/api/contents/${contentId}/assets`),
+
+  addAsset: (contentId: string, body: CreateContentAssetInput, csrfToken: string) =>
+    request<ContentAsset>(`/api/contents/${contentId}/assets`, {
+      method: 'POST',
+      body,
+      csrfToken,
+    }),
+
+  removeAsset: (contentId: string, assetId: string, csrfToken: string) =>
+    request<void>(`/api/contents/${contentId}/assets/${assetId}`, {
+      method: 'DELETE',
+      csrfToken,
+    }),
 };

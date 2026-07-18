@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient, ApiError, ConnectedAccount, CurrentUser } from '@/lib/api-client';
+import { AppHeader } from '@/components/AppHeader';
 
 const STATUS_MESSAGES: Record<string, { tone: 'success' | 'warning' | 'danger'; text: string }> = {
   success: { tone: 'success', text: 'Facebook Page connected successfully.' },
@@ -84,17 +85,18 @@ function SettingsPageContent(): JSX.Element {
 
   return (
     <div>
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h1 className="h3 mb-0">Settings</h1>
+      <AppHeader>
         {user && (
-          <div className="d-flex align-items-center gap-3">
+          <>
             <span className="text-muted small">{user.email}</span>
             <button className="btn btn-outline-secondary btn-sm" onClick={handleLogout}>
               Log out
             </button>
-          </div>
+          </>
         )}
-      </div>
+      </AppHeader>
+
+      <h1 className="h3 mb-4">Settings</h1>
 
       {statusBanner && (
         <div className={`alert alert-${statusBanner.tone}`} role="status">
