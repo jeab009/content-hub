@@ -77,3 +77,14 @@
 > เก็บทั้งหมดลงใน memory.md, การทำงานลง makedown.md, prompt ลง history_prompt.md, suggestion/comment ลง suggestion.md, issue/error ลง errorlog.md, business rule ลง bussiness_rule.md
 
 **Output**: sync ทุก doc file กับงาน Phase 2 backend + frontend Pass C1/C2 — [memory.md](memory.md) build status, [makedown.md](makedown.md) §9.5 table + §9.6 frontend detail, [history_prompt.md](history_prompt.md) prompt log, [errorlog.md](errorlog.md) §Phase 2 Frontend (P2F-OBS-1/2), [suggestion.md](suggestion.md) frontend note. ไม่มี business rule ใหม่ (Pass C = UI implement ตาม rule เดิม)
+
+## 2026-07-18 — ดำเนินการต่อ Phase 3 (Dashboard v1)
+
+> เก็บครบหมดแล้วดำเนินการต่อ phase 3 ได้เลยครับ
+
+**Output**: build Phase 3 (Dashboard v1) ครบ 2 pass, verified end-to-end บน Docker:
+- **3A backend** (`5a2aeb7`): เติม `fetchMetrics` ใน platform adapters (mock/live gated — mock synthetic deterministic, live FB Graph insights / YouTube Analytics API). MetricsModule (append-only ingestion `POST /api/metrics/sync` per-post failure isolated, manual entry, history) + DashboardModule (overview KPI/trend/byPlatform, revenue byContent/byPlatform). Metric append-only ตาม System Analyst condition #3 — ไม่มี PATCH/DELETE. 236 tests
+- **3B frontend** (`98f6cf1`): หน้า `/dashboard` (KPI cards, SVG trend chart dependency-free, revenue tables, Sync button) + Add-metric modal ใน `/posts`. 24 frontend tests
+- Verify browser: sync (mock synced), manual entry (201), append-only history เก็บ 3 rows ไม่ทับ, dashboard total = latest-per-post, trend cumulative ต่อวัน
+- Dev-env: re-encrypt connected-account token ใน demo DB ด้วย key ปัจจุบันเพื่อ verify api-sync (P3-OBS-1)
+- Defer: cron auto-sync (ใช้ปุ่ม Sync manual ก่อน), KPI target/alert — บันทึกใน [makedown.md](makedown.md) §9.7. ไม่มี business rule ใหม่

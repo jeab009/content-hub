@@ -53,6 +53,17 @@ Test failures / runtime errors found during build. Full root-cause detail lives 
 
 - **Frontend tests**: jest 24/24 ผ่าน (publish-logic 12 + copyright-gate 12), lint zero-warning, typecheck clean, `next build` (Docker image) ผ่าน. ไม่มี test fail / ไม่มี runtime error ใหม่จาก code.
 
+## Phase 3 — Dashboard v1 (2026-07-18)
+
+| ID | Severity | Found by | Summary | Status |
+|---|---|---|---|---|
+| P3-OBS-1 | Low (dev env, not code) | main-thread verify | api-sync happy path ทดสอบไม่ได้ตอนแรก: connected-account token ใน demo DB เข้ารหัสด้วย APP_ENCRYPTION_KEY เดิม → getValidToken decrypt fail ("Unsupported state or unable to authenticate data"). Ingestion จัดการถูก (per-post failed, isolated, ไม่ล้ม batch). แก้: re-encrypt token ของ FB/YT accounts ด้วย key ปัจจุบัน (mock placeholder token) เพื่อ exercise mock adapter → synced สำเร็จ | Resolved (dev DB) — mock mode ไม่สนใจค่า token; live ต้อง reconnect จริง |
+| P3-OBS-2 | Info | design | Cron auto-sync ยังไม่ทำ — metric sync trigger ผ่านปุ่ม Sync (manual) เท่านั้น. BullMQ repeatable job (infra พร้อมใน QueueModule) ทำเป็น Phase 3.5 ได้ | Open — defer |
+
+- **Phase 3A backend**: 236 tests (จาก 225, +11: adapter contract fetchMetrics, dashboard aggregation, ingestion isolation). Verified live บน Postgres: sync (mock synced), manual append, append-only history, dashboard latest-per-post. Adapter contract spec อัพเดต: fetchMetrics ไม่ throw PlatformCapabilityNotImplementedError แล้ว (Phase 3 เติม), เหลือ fetchComments/replyComment เป็น stub (Phase 4)
+- **Phase 3B frontend**: jest 24/24, lint+typecheck clean, `next build` ผ่าน. Verified browser: dashboard render (KPI/trend/tables), Sync button, manual metric modal (201) → dashboard reflects latest-per-post. ไม่มี console error
+- **Append-only invariant** ยืนยัน live: post เดียวมี 3 metric rows (2 manual + 1 api) เก็บครบ, dashboard total ใช้ row ล่าสุด (ไม่ sum ทับ)
+
 ## Carry-forward to Phase 2 kickoff (from Bug Fixer close-out, 2026-07-16)
 
 - QC review + QA baseline ของ Phase 2 WIP commits ก่อนเขียนโค้ดใหม่ — migration `20260716054701_phase2_publish_cms_ranking` ถูก apply ใน demo DB แล้ว ต้อง treat schema เป็น already-live
@@ -63,5 +74,6 @@ Test failures / runtime errors found during build. Full root-cause detail lives 
 ## Open / not yet tested
 
 - No live remote CI run performed
-- Phase 2 (CMS/ranking/publish backend + frontend) เสร็จ + verified. **ยังไม่ build**: dashboard (Phase 3), comment aggregation (Phase 4), TikTok/LINE (Phase 5) — no tests exist yet
-- Full mock-publish success path ยังไม่เคยเห็น posted จริงผ่าน UI (token stale, P2F-OBS-2) — unit test cover แล้ว
+- Phase 2 + Phase 3 (dashboard) เสร็จ + verified. **ยังไม่ build**: comment aggregation (Phase 4), TikTok/LINE (Phase 5) — no tests exist yet
+- Full mock-publish success path ยังไม่เคยเห็น posted จริงผ่าน UI (token stale, P2F-OBS-2) — unit test cover แล้ว; metric api-sync happy path verified แล้วหลัง re-encrypt token (P3-OBS-1)
+- Cron auto-sync + KPI alert ยังไม่ทำ (defer, ดู makedown §9.7)

@@ -126,7 +126,7 @@ Phase map ปรับใหม่ — เพิ่ม Phase 1.5 เป็น bl
 | 1 | Foundation | **เสร็จ, verified** | — |
 | 1.5 | Compliance & Schema Gate | **เสร็จ (2026-07-16)** — schema migrate แล้ว, copyright gate service + tests, seed provisional defaults; เหลือ Meta App Review submission (ค้าง admin) | Phase 1 |
 | 2 | Content CMS + Ranking v1 + Manual Publish (FB+YouTube) | **เสร็จ (2026-07-18)** — backend QC APPROVED + QA SIGNED OFF (225 tests); frontend Pass C1 (CMS UI, `c5195a1`) + Pass C2 (Scheduler/Publish/Posts UI, `910e4b1`), verified end-to-end บน Docker stack | Phase 1.5 |
-| 3 | Dashboard v1 (revenue/reach + KPI alert) | ยังไม่เริ่ม | Phase 2 |
+| 3 | Dashboard v1 (revenue/reach) | **เสร็จ (2026-07-18)** — metric ingestion (mock/live adapter fetchMetrics, append-only) + dashboard read model + UI, verified end-to-end. KPI target/alert ยัง defer (ดู §9.7) | Phase 2 |
 | 4 | Comment Aggregation (+SLA/escalation) | ยังไม่เริ่ม — **PDPA gate**: ต้องมี DPA กับ sentiment vendor + retention policy ก่อน ship | Phase 2 (ขนานกับ 3 ได้) |
 | 5 | TikTok/LINE + Ranking v2 + Export | ยังไม่เริ่ม | Phase 3+4 |
 | 6 | Optimization Backlog (A/B test, competitor benchmark) | backlog, ยังไม่ commit | Phase 5 |
@@ -149,6 +149,24 @@ Stack: Next.js 14 App Router + Bootstrap 5 (ตาม frontend เดิม Phas
 - Nav เพิ่ม link Scheduler + Posts
 
 **Verify (browser จริงบน Docker stack)**: login → rank content (score เปลี่ยน, recommended flip YouTube 0.625) → publish override เป็น Facebook (server ตอบ `wasOverride=true`, override reason persisted) → retry dispatch 200 → resolve-not-posted (post กลับเป็น failed, version bump ใน DB). typecheck + lint + jest 24/24 ผ่าน, ไม่มี console error. ดู [errorlog.md](errorlog.md) §Phase 2 Frontend
+
+## 9.7 Phase 3 — Dashboard v1 (เสร็จ 2026-07-18)
+
+Exit criteria (§5 Phase 3) บรรลุ: admin เห็นรายได้จริงต่อ content/platform ใน dashboard.
+
+**Metric ingestion model**: append-only (System Analyst condition #3). ทุก reading = insert row ใหม่ (source `api` หรือ `manual`), ไม่มี update/overwrite. Dashboard "current" ต่อ post = reading ล่าสุด (max collectedAt); totals/breakdown sum latest-per-post; trend replay reading เรียงเวลาแล้ว snapshot cumulative ต่อวัน.
+
+**3A Backend** (`5a2aeb7`):
+- `PlatformAdapter.fetchMetrics(args)` เปลี่ยนจาก stub → คืน `MetricSnapshot {reach, engagement, revenue}`. Mock/live gated ด้วย `PUBLISHER_IMPL_*` เหมือน publish: mock = synthetic deterministic (seed จาก post.id, scale ตามจำนวนวัน live → trend ขึ้น), live = FB Graph `/insights` (`post_impressions_unique`, `post_engaged_users`, `content_monetization_earnings`) / YouTube Analytics API `reports.query` (`views`, `likes+comments+shares`, `estimatedRevenue`). Token check faithful ทั้ง mock/live
+- **MetricsModule**: `MetricIngestionService.syncApiMetrics` (loop post ที่ status posted/posted_unconfirmed + platform FB/YT, resolve connected account + token ผ่าน `getValidToken`, append api row; per-post failure isolated รายงานเป็น skipped/failed ไม่ล้ม batch), `MetricsService` (manual append + history). Endpoints: `POST /api/metrics/sync`, `POST /api/posts/:id/metrics`, `GET /api/posts/:id/metrics`. Admin + CSRF, ไม่มี PATCH/DELETE
+- **DashboardModule**: `GET /api/dashboard/overview` (totals reach/engagement/revenue + postsWithMetrics/contentsWithMetrics, byPlatform, trend), `GET /api/dashboard/revenue` (byContent, byPlatform, totalRevenue). Read-only, pure JS aggregation
+- reuse: export `PlatformAdapterRegistry` จาก PublishModule (single source of truth mock/live), `toAssetPlatform` reverse map เพิ่มใน platform-map util
+
+**3B Frontend** (`98f6cf1`): หน้า `/dashboard` (KPI cards, SVG cumulative-revenue trend chart แบบ dependency-free, revenue-by-platform/content tables, ปุ่ม Sync metrics), Add-metric modal ใน `/posts` (manual append-only entry, reach/engagement/revenue THB/collectedAt). api-client + labels + THB/count formatter, nav เพิ่ม Dashboard
+
+**Verify (browser จริงบน Docker)**: Sync (1 synced ผ่าน mock adapter), manual entry (201), history append-only (2 manual + 1 api row เก็บครบ ไม่ทับ), dashboard totals = latest-per-post (ไม่ sum ซ้ำ), trend cumulative ต่อวัน. 236 backend + 24 frontend tests. ดู [errorlog.md](errorlog.md) §Phase 3
+
+**Defer จาก Phase 3 (ยกไป Phase 3.5/5)**: (1) cron auto-sync — ตอนนี้ trigger ผ่านปุ่ม Sync manual (BullMQ repeatable job ทำได้ทีหลัง, infra พร้อม); (2) KPI target/threshold + alert (gap §10 Analytics/Growth) — dashboard ตอนนี้แสดงผลอย่างเดียว ยังไม่มี target/alert; (3) TikTok/LINE manual revenue form — endpoint manual รองรับแล้ว แต่ platform ยังไม่ publish (Phase 5)
 
 ## 10. Gap Analysis (2026-07-16) — ยังไม่อยู่ใน scope ปัจจุบัน
 

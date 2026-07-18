@@ -98,3 +98,13 @@
 - **Explainable score ใน UI**: ScoreReasoning component โชว์ factor breakdown (weight/value/contribution/inputs) ให้ admin เห็นเหตุผล ranking ก่อนกดยิง — ลด black-box, ช่วย admin ตัดสิน override อย่างมีข้อมูล
 - **แนะนำก่อน production**: (1) re-connect FB/YouTube accounts กับ APP_ENCRYPTION_KEY ปัจจุบันเพื่อทดสอบ posted จริงผ่าน UI (ตอนนี้ token stale ทำให้ publish จบเป็น failed เสมอ — P2F-OBS-2); (2) เพิ่ม auto-refresh/polling ในหน้า Posts เพราะ dispatch async — ตอนนี้ต้อง reload เอง; (3) PROVISIONAL badge (System Analyst condition) ยังไม่โชว์ pillar-ratio/cadence ที่เป็น provisional ใน scheduler UI — ควรเพิ่มถ้าตัวเลข seed ยัง provisional (แต่ flip เป็น false แล้วตาม memory.md ปี 07-16 จึงอาจไม่จำเป็น)
 - **Dashboard (Phase 3) suggestion**: cadence card ใน scheduler reuse ได้เป็น base ของ KPI card ใน dashboard overview — pattern เดียวกัน (progress + status badge)
+
+## Phase 3 Dashboard notes (2026-07-18)
+
+- **Append-only metric model จ่ายผลดีเกินคาด**: เก็บทุก reading (api + manual) เป็น time-series → trend chart ได้ฟรี, correction = row ใหม่ ไม่ทับของเดิม, audit ครบ. Dashboard aggregation ทำใน JS (latest-per-post) — dataset demo เล็ก โอเค; ถ้า scale โต ควรย้าย latest-per-post เป็น SQL `DISTINCT ON (post_id) ... ORDER BY collected_at DESC` + วัสดุ index บน (post_id, collected_at) ที่มีอยู่แล้ว
+- **แนะนำก่อน production / Phase 3.5**:
+  1. **Cron auto-sync** — ตอนนี้ Sync เป็น manual button. เพิ่ม BullMQ repeatable job (infra พร้อมใน QueueModule) ยิง syncApiMetrics ทุกวัน. ต้องแก้ getValidToken ให้รับ system context (ตอนนี้ผูก userId) หรือ resolve owner ของ account
+  2. **KPI target/alert** (gap §10) — dashboard แสดงผลอย่างเดียว ยังไม่มี target line หรือ alert เมื่อ revenue/reach ต่ำกว่าเกณฑ์. คู่กับ System Analyst condition "alert dedup" (gate Phase 3/4)
+  3. **live metric paths ยังไม่ verified** — FB Graph insights / YouTube Analytics query implement แล้วแต่รันแค่ mock (default). ก่อนเปิด live ต้อง reconnect account จริง + ยืนยัน metric name/scope (`yt-analytics-monetary.readonly`, Meta Content Monetization enrollment สำหรับ earnings)
+  4. **TikTok/LINE revenue** — endpoint manual (`POST /api/posts/:id/metrics`) รองรับแล้ว, รอ Phase 5 เปิด publish 2 platform นี้ก่อน
+- **Trend chart**: เขียนเป็น SVG dependency-free (Bootstrap-only stack) — ถ้าอยากได้ interaction เยอะ (zoom/tooltip ละเอียด) ค่อยพิจารณา Recharts ตาม tech stack เดิม §4 แต่จะเพิ่ม bundle
