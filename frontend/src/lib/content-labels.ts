@@ -7,6 +7,7 @@ import type {
   ContentType,
   CopyrightClearance,
   LicensingStatus,
+  MetricSource,
   PostPlatform,
   PostStatus,
 } from '@/lib/api-client';
@@ -103,6 +104,26 @@ const PACE_BADGE: Record<CadencePaceStatus, string> = {
   target_met: 'bg-primary',
 };
 
+const METRIC_SOURCE_LABELS: Record<MetricSource, string> = {
+  api: 'API',
+  manual: 'Manual',
+};
+
+/** THB currency, 2 dp (revenue = platform payout, makedown.md §6). */
+export function formatTHB(value: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'THB',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+/** Compact integer with thousands separators (reach/engagement counts). */
+export function formatCount(value: number): string {
+  return new Intl.NumberFormat('en-US').format(value);
+}
+
 /** Humanizes a ranking factor name (e.g. `engagement_history`). */
 function humanizeFactor(value: string): string {
   return value
@@ -131,4 +152,5 @@ export const labels = {
   pace: (value: CadencePaceStatus): string => PACE_LABELS[value],
   paceBadgeClass: (value: CadencePaceStatus): string => PACE_BADGE[value],
   factor: (value: string): string => humanizeFactor(value),
+  metricSource: (value: MetricSource): string => METRIC_SOURCE_LABELS[value],
 };

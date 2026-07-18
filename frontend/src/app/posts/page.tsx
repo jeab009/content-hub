@@ -24,9 +24,13 @@ const POST_STATUSES: PostStatus[] = [
 /** Statuses the backend allows a manual re-dispatch from (post-state.ts). */
 const RETRYABLE_STATUSES: PostStatus[] = ['draft', 'failed'];
 
+/** Statuses where a post is live enough to carry metrics. */
+const METRIC_ELIGIBLE_STATUSES: PostStatus[] = ['posted', 'posted_unconfirmed'];
+
 type PendingAction =
   | { kind: 'retry'; post: Post }
-  | { kind: 'resolve-posted'; post: Post };
+  | { kind: 'resolve-posted'; post: Post }
+  | { kind: 'add-metric'; post: Post };
 
 export default function PostsPage(): JSX.Element {
   const router = useRouter();
@@ -205,12 +209,21 @@ export default function PostsPage(): JSX.Element {
                         </button>
                         <button
                           type="button"
-                          className="btn btn-sm btn-outline-danger"
+                          className="btn btn-sm btn-outline-danger me-2"
                           onClick={() => void handleResolveNotPosted(post)}
                         >
                           Not posted
                         </button>
                       </>
+                    )}
+                    {METRIC_ELIGIBLE_STATUSES.includes(post.status) && (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-secondary"
+                        onClick={() => setPendingAction({ kind: 'add-metric', post })}
+                      >
+                        Add metric
+                      </button>
                     )}
                   </td>
                 </tr>
@@ -242,6 +255,15 @@ export default function PostsPage(): JSX.Element {
             setPendingAction(null);
             void loadPosts(statusFilter);
           }}
+        />
+      )}
+      {pendingAction && csrfToken && pendingAction.kind === 'add-metric' && (
+        <AddMetricModal
+          post={pendingAction.post}
+          title={titles.get(pendingAction.post.contentId) ?? pendingAction.post.contentId}
+          csrfToken={csrfToken}
+          onClose={() => setPendingAction(null)}
+          onDone={() => setPendingAction(null)}
         />
       )}
     </div>
@@ -389,6 +411,130 @@ function ResolvePostedModal(props: ActionModalProps): JSX.Element {
             disabled={externalPostId.trim().length === 0 || isSubmitting}
           >
             {isSubmitting ? 'Saving…' : 'Mark posted'}
+          </button>
+        </div>
+      </form>
+    </ActionModalShell>
+  );
+}
+
+/** Manual metric entry modal (append-only). Numbers only, revenue in THB. */
+function AddMetricModal(props: ActionModalProps): JSX.Element {
+  const [reach, setReach] = useState('');
+  const [engagement, setEngagement] = useState('');
+  const [revenue, setRevenue] = useState('');
+  const [collectedAt, setCollectedAt] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const canSubmit = reach.trim() !== '' && engagement.trim() !== '' && revenue.trim() !== '';
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!canSubmit) return;
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      await apiClient.addManualMetric(
+        props.post.id,
+        {
+          reach: Number(reach),
+          engagement: Number(engagement),
+          revenue: Number(revenue),
+          // datetime-local yields no timezone; append Z to send as UTC.
+          collectedAt: collectedAt ? `${collectedAt}:00Z` : undefined,
+        },
+        props.csrfToken,
+      );
+      props.onDone();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Failed to add the metric.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <ActionModalShell
+      titleId="add-metric-title"
+      heading={`Add metric — “${props.title}”`}
+      onClose={props.onClose}
+    >
+      <form onSubmit={handleSubmit} noValidate>
+        <div className="modal-body">
+          <p className="small text-muted mb-3">
+            Manual reading for {labels.postPlatform(props.post.platform)}. Metrics are append-only —
+            this adds a new reading, it never overwrites an existing one.
+          </p>
+          <div className="row g-2">
+            <div className="col-4">
+              <label htmlFor="metric-reach" className="form-label">
+                Reach <span className="text-danger">*</span>
+              </label>
+              <input
+                id="metric-reach"
+                type="number"
+                min={0}
+                className="form-control"
+                value={reach}
+                onChange={(e) => setReach(e.target.value)}
+                required
+              />
+            </div>
+            <div className="col-4">
+              <label htmlFor="metric-engagement" className="form-label">
+                Engagement <span className="text-danger">*</span>
+              </label>
+              <input
+                id="metric-engagement"
+                type="number"
+                min={0}
+                className="form-control"
+                value={engagement}
+                onChange={(e) => setEngagement(e.target.value)}
+                required
+              />
+            </div>
+            <div className="col-4">
+              <label htmlFor="metric-revenue" className="form-label">
+                Revenue (THB) <span className="text-danger">*</span>
+              </label>
+              <input
+                id="metric-revenue"
+                type="number"
+                min={0}
+                step="0.01"
+                className="form-control"
+                value={revenue}
+                onChange={(e) => setRevenue(e.target.value)}
+                required
+              />
+            </div>
+          </div>
+          <div className="mt-3">
+            <label htmlFor="metric-collected" className="form-label">
+              Collected at <span className="text-muted">(defaults to now)</span>
+            </label>
+            <input
+              id="metric-collected"
+              type="datetime-local"
+              className="form-control"
+              value={collectedAt}
+              onChange={(e) => setCollectedAt(e.target.value)}
+            />
+          </div>
+          {error && (
+            <div className="alert alert-danger mt-3" role="alert">
+              {error}
+            </div>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button type="button" className="btn btn-outline-secondary" onClick={props.onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="btn btn-primary" disabled={!canSubmit || isSubmitting}>
+            {isSubmitting ? 'Saving…' : 'Add metric'}
           </button>
         </div>
       </form>

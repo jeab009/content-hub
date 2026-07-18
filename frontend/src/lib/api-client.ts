@@ -292,6 +292,93 @@ export interface CreatePostInput {
   overrideReason?: string;
 }
 
+// --- Metrics + Dashboard domain types (Phase 3). String unions mirror the
+// backend Prisma enums / DTOs exactly — keep them in sync.
+
+export type MetricSource = 'api' | 'manual';
+
+export interface Metric {
+  id: string;
+  postId: string;
+  platform: PostPlatform;
+  reach: number;
+  engagement: number;
+  revenue: number;
+  source: MetricSource;
+  collectedAt: string;
+  createdAt: string;
+}
+
+export interface CreateManualMetricInput {
+  reach: number;
+  engagement: number;
+  revenue: number;
+  collectedAt?: string;
+}
+
+export type SyncOutcome = 'synced' | 'skipped' | 'failed';
+
+export interface SyncItemResult {
+  postId: string;
+  platform: PostPlatform;
+  outcome: SyncOutcome;
+  reason?: string;
+}
+
+export interface SyncResult {
+  ranAt: string;
+  eligible: number;
+  synced: number;
+  skipped: number;
+  failed: number;
+  items: SyncItemResult[];
+}
+
+export interface PlatformBreakdownItem {
+  platform: PostPlatform;
+  reach: number;
+  engagement: number;
+  revenue: number;
+  posts: number;
+}
+
+export interface TrendPoint {
+  date: string;
+  reach: number;
+  revenue: number;
+}
+
+export interface DashboardOverview {
+  generatedAt: string;
+  totals: {
+    reach: number;
+    engagement: number;
+    revenue: number;
+    postsWithMetrics: number;
+    contentsWithMetrics: number;
+  };
+  byPlatform: PlatformBreakdownItem[];
+  trend: TrendPoint[];
+}
+
+export interface RevenueByContentItem {
+  contentId: string;
+  title: string;
+  type: ContentType;
+  contentPillar: ContentPillar | null;
+  reach: number;
+  engagement: number;
+  revenue: number;
+  posts: number;
+}
+
+export interface DashboardRevenue {
+  generatedAt: string;
+  totalRevenue: number;
+  byContent: RevenueByContentItem[];
+  byPlatform: PlatformBreakdownItem[];
+}
+
 function buildContentQuery(query: ListContentQuery = {}): string {
   const params = new URLSearchParams();
   if (query.type) params.set('type', query.type);
@@ -421,4 +508,23 @@ export const apiClient = {
       method: 'POST',
       csrfToken,
     }),
+
+  // --- Metrics endpoints (Phase 3) ---
+
+  /** Pull API-platform metrics for all live posts and append them. */
+  syncMetrics: (csrfToken: string) =>
+    request<SyncResult>('/api/metrics/sync', { method: 'POST', csrfToken }),
+
+  /** Append a manual metric reading for a post (append-only). */
+  addManualMetric: (postId: string, body: CreateManualMetricInput, csrfToken: string) =>
+    request<Metric>(`/api/posts/${postId}/metrics`, { method: 'POST', body, csrfToken }),
+
+  /** Full reading history for a post (oldest first). */
+  listMetrics: (postId: string) => request<Metric[]>(`/api/posts/${postId}/metrics`),
+
+  // --- Dashboard endpoints (Phase 3) ---
+
+  getDashboardOverview: () => request<DashboardOverview>('/api/dashboard/overview'),
+
+  getDashboardRevenue: () => request<DashboardRevenue>('/api/dashboard/revenue'),
 };
