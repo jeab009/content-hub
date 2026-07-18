@@ -1,6 +1,7 @@
 import { AssetPlatform, CadencePeriodUnit } from '@prisma/client';
 import { SchedulerService } from './scheduler.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { pickRecommendedScore } from '../ranking/ranking.constants';
 import { cadencePaceStatus } from './dto/scheduler-overview.dto';
 
 describe('cadencePaceStatus', () => {
@@ -127,5 +128,48 @@ describe('SchedulerService.overview', () => {
     );
     expect(ready.latestScores.map((score) => score.id)).not.toContain('s-old-fb');
     expect(ready.recommendedPlatform).toBe(AssetPlatform.youtube);
+  });
+
+  describe('BUG-QA-003: tie-break agrees with the ranking engine', () => {
+    const tiedScores = [
+      {
+        id: 's-yt',
+        contentId: 'content-1',
+        platform: AssetPlatform.youtube,
+        score: 0.785,
+        computedAt: new Date('2026-07-17T10:00:00Z'),
+      },
+      {
+        id: 's-fb',
+        contentId: 'content-1',
+        platform: AssetPlatform.facebook,
+        score: 0.785,
+        computedAt: new Date('2026-07-17T10:00:00Z'),
+      },
+    ];
+
+    it('recommends facebook on a tie (earliest in RANKED_PLATFORMS) and matches pickRecommendedScore', async () => {
+      // DB row order lists youtube first — the shared tie-break must still win.
+      prisma.rankingScore.findMany.mockResolvedValue(tiedScores);
+
+      const overview = await service.overview(now);
+      const [ready] = overview.readyContents;
+
+      expect(ready.recommendedPlatform).toBe(AssetPlatform.facebook);
+      // The publish-time recompute path (getRecommendation) routes through the
+      // same shared util, so both agree on this exact set of scores.
+      expect(pickRecommendedScore(tiedScores)?.platform).toBe(AssetPlatform.facebook);
+    });
+
+    it('requests a deterministic secondary DB sort key (platform) on the batched scores query', async () => {
+      prisma.rankingScore.findMany.mockResolvedValue(tiedScores);
+      await service.overview(now);
+
+      expect(prisma.rankingScore.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: [{ computedAt: 'desc' }, { platform: 'asc' }],
+        }),
+      );
+    });
   });
 });

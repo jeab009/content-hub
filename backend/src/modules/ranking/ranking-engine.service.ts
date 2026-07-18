@@ -3,7 +3,12 @@ import { AssetPlatform, EngineVersion, Prisma, RankingScore } from '@prisma/clie
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../../common/audit/audit-log.service';
 import { RankingFactorsService } from './ranking-factors.service';
-import { RANKED_PLATFORMS, RankingReasoning, round4 } from './ranking.constants';
+import {
+  RANKED_PLATFORMS,
+  RankingReasoning,
+  pickRecommendedScore,
+  round4,
+} from './ranking.constants';
 
 /**
  * Rule-based ranking engine v1. Produces one ranking_scores row per ranked
@@ -72,7 +77,11 @@ export class RankingEngineService {
   async getLatestScores(contentId: string): Promise<RankingScore[]> {
     const rows = await this.prisma.rankingScore.findMany({
       where: { contentId },
-      orderBy: { computedAt: 'desc' },
+      // Secondary key makes "latest row per platform" deterministic when two
+      // scores share a computed_at (e.g. same recompute batch) — without it
+      // Postgres row order is arbitrary and the tie-break below is fed a
+      // non-deterministic set. See BUG-QA-003.
+      orderBy: [{ computedAt: 'desc' }, { platform: 'asc' }],
     });
 
     const latestByPlatform = new Map<AssetPlatform, RankingScore>();
@@ -87,14 +96,11 @@ export class RankingEngineService {
   /**
    * The platform with the highest latest score, or null when the content
    * has never been ranked. Ties break toward the earlier entry in
-   * RANKED_PLATFORMS order (deterministic, documented).
+   * RANKED_PLATFORMS order (deterministic, documented) — via the SHARED
+   * pickRecommendedScore so this agrees with the scheduler overview.
    */
   async getRecommendation(contentId: string): Promise<RankingScore | null> {
-    const latest = await this.getLatestScores(contentId);
-    if (latest.length === 0) {
-      return null;
-    }
-    return latest.reduce((best, row) => (Number(row.score) > Number(best.score) ? row : best));
+    return pickRecommendedScore(await this.getLatestScores(contentId));
   }
 
   private async scoreOnePlatform(

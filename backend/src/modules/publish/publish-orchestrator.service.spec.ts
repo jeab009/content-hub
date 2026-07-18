@@ -1,5 +1,5 @@
 import { ConflictException, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { AssetPlatform, ContentPillar, PostStatus } from '@prisma/client';
+import { AssetPlatform, ContentPillar, PostStatus, Prisma } from '@prisma/client';
 import { Queue } from 'bullmq';
 import { PublishOrchestratorService } from './publish-orchestrator.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -48,7 +48,13 @@ describe('PublishOrchestratorService', () => {
   let prisma: {
     content: { findUnique: jest.Mock };
     connectedAccount: { findFirst: jest.Mock };
-    post: { create: jest.Mock; update: jest.Mock; findUnique: jest.Mock; findMany: jest.Mock };
+    post: {
+      create: jest.Mock;
+      update: jest.Mock;
+      findUnique: jest.Mock;
+      findFirst: jest.Mock;
+      findMany: jest.Mock;
+    };
   };
   let stepUp: { assertFreshPassword: jest.Mock };
   let rankingEngine: { getLatestScores: jest.Mock; getRecommendation: jest.Mock };
@@ -77,6 +83,8 @@ describe('PublishOrchestratorService', () => {
           ...args.data,
         })),
         findUnique: jest.fn(),
+        // No active duplicate by default (BUG-QA-001 guard queries this).
+        findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
       },
     };
@@ -220,6 +228,79 @@ describe('PublishOrchestratorService', () => {
         ConflictException,
       );
       expect(prisma.post.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('BUG-QA-001: duplicate publish intent guard', () => {
+    it('rejects (409) a second create while an active post for the same (content, platform) exists', async () => {
+      // First create succeeds (no active duplicate).
+      await service.createAndDispatch(buildDto({ platform: AssetPlatform.facebook }), ADMIN_ID);
+      expect(prisma.post.create).toHaveBeenCalledTimes(1);
+
+      // Now an active (draft) post exists for content-1/facebook.
+      prisma.post.findFirst.mockResolvedValue({ id: 'post-1', status: PostStatus.draft });
+
+      await expect(
+        service.createAndDispatch(buildDto({ platform: AssetPlatform.facebook }), ADMIN_ID),
+      ).rejects.toThrow(ConflictException);
+      // No second row created, no second dispatch enqueued.
+      expect(prisma.post.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('blocks a duplicate against an already-posted (succeeded) post too', async () => {
+      prisma.post.findFirst.mockResolvedValue({ id: 'post-1', status: PostStatus.posted });
+
+      await expect(
+        service.createAndDispatch(buildDto({ platform: AssetPlatform.facebook }), ADMIN_ID),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.post.create).not.toHaveBeenCalled();
+    });
+
+    it('queries only active statuses so a failed prior attempt can be re-created', async () => {
+      // Guard finds nothing active (failed rows are excluded from the query).
+      await service.createAndDispatch(buildDto({ platform: AssetPlatform.facebook }), ADMIN_ID);
+
+      expect(prisma.post.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            contentId: 'content-1',
+            platform: 'facebook',
+            status: {
+              in: [
+                PostStatus.draft,
+                PostStatus.scheduled,
+                PostStatus.posted,
+                PostStatus.posted_unconfirmed,
+              ],
+            },
+          }),
+        }),
+      );
+      expect(prisma.post.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows a different platform for the same content', async () => {
+      await service.createAndDispatch(buildDto({ platform: AssetPlatform.facebook }), ADMIN_ID);
+      // Different platform → guard still sees no active duplicate → allowed.
+      await service.createAndDispatch(buildDto({ platform: AssetPlatform.youtube }), ADMIN_ID);
+
+      expect(prisma.post.create).toHaveBeenCalledTimes(2);
+    });
+
+    it('maps a concurrent DB unique-violation (P2002) to a 409 (race backstop)', async () => {
+      // App-level check passes (TOCTOU window), but the partial unique index
+      // rejects the losing racer.
+      prisma.post.create.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(
+        service.createAndDispatch(buildDto({ platform: AssetPlatform.facebook }), ADMIN_ID),
+      ).rejects.toThrow(ConflictException);
+      expect(queue.add).not.toHaveBeenCalled();
     });
   });
 

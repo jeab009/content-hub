@@ -1,15 +1,56 @@
-import { AssetPlatform } from '@prisma/client';
+import { AssetPlatform, Prisma } from '@prisma/client';
 
 /**
  * Platforms the v1 ranking engine scores. Facebook and YouTube are the two
  * platforms with a working connect flow + publish adapter in Pass B; TikTok
  * and LINE OA join in Phase 5 by extending this list (the engine itself is
  * platform-count agnostic).
+ *
+ * ORDER IS SEMANTIC: it is the documented tie-break order for recommendations
+ * — on equal scores the platform earlier in this list wins (see
+ * pickRecommendedScore). Reordering it changes recommendation outcomes.
  */
 export const RANKED_PLATFORMS: readonly AssetPlatform[] = [
   AssetPlatform.facebook,
   AssetPlatform.youtube,
 ];
+
+/** Minimal shape the recommendation tie-break needs from a score row. */
+export interface ScoreLike {
+  platform: AssetPlatform;
+  score: Prisma.Decimal | number;
+}
+
+/**
+ * The single, shared "which platform does this set of scores recommend?"
+ * rule. Highest score wins; ties break deterministically toward the platform
+ * that appears earlier in RANKED_PLATFORMS (a platform not in the list sorts
+ * last). Returns null for an empty set.
+ *
+ * Both the per-content ranking path (RankingEngineService.getRecommendation,
+ * which the publish-time override recompute reads) and the batched scheduler
+ * overview (SchedulerService.topPlatform) MUST route through this so their
+ * recommendations can never disagree on a tie — see BUG-QA-003.
+ */
+export function pickRecommendedScore<T extends ScoreLike>(scores: readonly T[]): T | null {
+  if (scores.length === 0) {
+    return null;
+  }
+  const rank = (platform: AssetPlatform): number => {
+    const index = RANKED_PLATFORMS.indexOf(platform);
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+  };
+  return scores.reduce((best, row) => {
+    const delta = Number(row.score) - Number(best.score);
+    if (delta > 0) {
+      return row;
+    }
+    if (delta < 0) {
+      return best;
+    }
+    return rank(row.platform) < rank(best.platform) ? row : best;
+  });
+}
 
 /**
  * Factor value used when a factor has no data to speak from (e.g. no

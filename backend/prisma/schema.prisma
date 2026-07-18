@@ -333,6 +333,13 @@ model Post {
   comments     Comment[]
 
   @@index([contentId, status, scheduledAt])
+  // BUG-QA-001: a Postgres PARTIAL unique index
+  // `posts_content_platform_active_key` UNIQUE (content_id, platform)
+  // WHERE status NOT IN ('failed','cancelled') enforces "at most one active
+  // publish intent per (content, platform)". It cannot be expressed as a
+  // Prisma `@@unique` (no WHERE clause), so it lives only in the hand-written
+  // migration 20260718000000_bugqa001_posts_active_publish_unique. Kept in
+  // sync with ACTIVE_PUBLISH_STATUSES in publish-orchestrator.service.ts.
   @@map("posts")
 }
 

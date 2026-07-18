@@ -89,7 +89,14 @@ export class ContentService {
     if (dto.copyrightCleared === CopyrightClearance.cleared) {
       this.assertClearanceIsEligible(compliance);
     }
-    if (dto.status === ContentStatus.ready) {
+    // Re-run the ready-gate whenever the resulting row would BE `ready`, not
+    // only when this PATCH explicitly sets status:ready. Otherwise a partial
+    // PATCH that edits contentPillar / evidence / clearance on an
+    // already-ready row could leave it `ready` while violating its pillar's
+    // copyright-evidence rule — a state the architecture says is unreachable
+    // (BUG-QA-002). The check runs against the MERGED compliance state above.
+    const resultingStatus = dto.status ?? existing.status;
+    if (resultingStatus === ContentStatus.ready) {
       this.assertReadyTransitionAllowed(compliance);
     }
 

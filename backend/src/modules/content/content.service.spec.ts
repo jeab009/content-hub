@@ -334,6 +334,78 @@ describe('ContentService', () => {
 
       expect(prisma.content.update).toHaveBeenCalled();
     });
+
+    describe('BUG-QA-002: ready-gate cannot be bypassed via a partial PATCH', () => {
+      const readyComedy = () =>
+        buildContent({
+          status: ContentStatus.ready,
+          contentPillar: ContentPillar.comedy,
+          copyrightCleared: CopyrightClearance.cleared,
+          copyrightEvidenceUrl: null,
+        });
+
+      const readyDramaWithEvidence = () =>
+        buildContent({
+          status: ContentStatus.ready,
+          contentPillar: ContentPillar.drama,
+          copyrightCleared: CopyrightClearance.cleared,
+          copyrightEvidenceUrl: EVIDENCE_URL,
+        });
+
+      it('rejects flipping an already-ready comedy row to drama (no evidence) even without status in the patch', async () => {
+        prisma.content.findUnique.mockResolvedValue(readyComedy());
+
+        await expect(
+          service.update('content-1', { contentPillar: ContentPillar.drama }, 'user-1'),
+        ).rejects.toThrow(/copyrightEvidenceUrl/);
+        // Row is left untouched — stays comedy/ready.
+        expect(prisma.content.update).not.toHaveBeenCalled();
+      });
+
+      it('rejects blanking the evidence url of an already-ready drama row', async () => {
+        prisma.content.findUnique.mockResolvedValue(readyDramaWithEvidence());
+
+        // Empty string is the realistic PATCH form of "remove evidence" — the
+        // gate treats a blank url as no-evidence (hasEvidence trims).
+        await expect(
+          service.update('content-1', { copyrightEvidenceUrl: '' }, 'user-1'),
+        ).rejects.toThrow(BadRequestException);
+        expect(prisma.content.update).not.toHaveBeenCalled();
+      });
+
+      it('rejects downgrading clearance to not_checked on an already-ready row', async () => {
+        prisma.content.findUnique.mockResolvedValue(readyComedy());
+
+        await expect(
+          service.update(
+            'content-1',
+            { copyrightCleared: CopyrightClearance.not_checked },
+            'user-1',
+          ),
+        ).rejects.toThrow(/copyrightCleared/);
+        expect(prisma.content.update).not.toHaveBeenCalled();
+      });
+
+      it('still allows a compliant PATCH on a ready row (e.g. caption edit)', async () => {
+        prisma.content.findUnique.mockResolvedValue(readyComedy());
+
+        await service.update('content-1', { caption: 'Updated caption' }, 'user-1');
+
+        expect(prisma.content.update).toHaveBeenCalledWith({
+          where: { id: 'content-1' },
+          data: { caption: 'Updated caption' },
+        });
+      });
+
+      it('allows a compliant pillar swap on a ready row when evidence still satisfies the new pillar', async () => {
+        // drama (with evidence) -> product (evidence still present) stays valid.
+        prisma.content.findUnique.mockResolvedValue(readyDramaWithEvidence());
+
+        await service.update('content-1', { contentPillar: ContentPillar.product }, 'user-1');
+
+        expect(prisma.content.update).toHaveBeenCalled();
+      });
+    });
   });
 
   describe('archive', () => {

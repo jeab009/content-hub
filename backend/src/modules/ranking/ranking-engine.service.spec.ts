@@ -190,5 +190,68 @@ describe('RankingEngineService', () => {
 
       expect(await service.getRecommendation('content-1')).toBeNull();
     });
+
+    describe('BUG-QA-003: deterministic tie-break', () => {
+      const tied = (order: 'fb-first' | 'yt-first') => {
+        const fb = {
+          id: 's-fb',
+          platform: AssetPlatform.facebook,
+          score: 0.785,
+          computedAt: new Date('2026-07-17T10:00:00Z'),
+        };
+        const yt = {
+          id: 's-yt',
+          platform: AssetPlatform.youtube,
+          score: 0.785,
+          computedAt: new Date('2026-07-17T10:00:00Z'),
+        };
+        return order === 'fb-first' ? [fb, yt] : [yt, fb];
+      };
+
+      it('breaks a tie toward the platform earliest in RANKED_PLATFORMS (facebook), regardless of DB row order', async () => {
+        prisma.rankingScore.findMany.mockResolvedValueOnce(tied('fb-first'));
+        expect((await service.getRecommendation('content-1'))?.platform).toBe(
+          AssetPlatform.facebook,
+        );
+
+        // Same tie, opposite DB row order → still facebook (deterministic).
+        prisma.rankingScore.findMany.mockResolvedValueOnce(tied('yt-first'));
+        expect((await service.getRecommendation('content-1'))?.platform).toBe(
+          AssetPlatform.facebook,
+        );
+      });
+
+      it('still picks the strict max when scores are not tied', async () => {
+        prisma.rankingScore.findMany.mockResolvedValue([
+          {
+            id: 's-fb',
+            platform: AssetPlatform.facebook,
+            score: 0.5,
+            computedAt: new Date('2026-07-17T10:00:00Z'),
+          },
+          {
+            id: 's-yt',
+            platform: AssetPlatform.youtube,
+            score: 0.9,
+            computedAt: new Date('2026-07-17T10:00:00Z'),
+          },
+        ]);
+
+        expect((await service.getRecommendation('content-1'))?.platform).toBe(
+          AssetPlatform.youtube,
+        );
+      });
+
+      it('requests a deterministic secondary DB sort key (platform) on the latest-scores query', async () => {
+        prisma.rankingScore.findMany.mockResolvedValue([]);
+        await service.getLatestScores('content-1');
+
+        expect(prisma.rankingScore.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            orderBy: [{ computedAt: 'desc' }, { platform: 'asc' }],
+          }),
+        );
+      });
+    });
   });
 });

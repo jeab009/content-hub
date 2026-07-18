@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AssetPlatform, PostStatus, RankingScore } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { toPostPlatform } from '../../common/utils/platform-map.util';
+import { pickRecommendedScore } from '../ranking/ranking.constants';
 import { currentPeriodEnd, currentPeriodStart } from '../../common/utils/cadence-period.util';
 import {
   CadenceOverviewItemDto,
@@ -87,7 +88,9 @@ export class SchedulerService {
     // (content, platform) = the latest score. Avoids an N+1 per content.
     const scores = await this.prisma.rankingScore.findMany({
       where: { contentId: { in: contents.map((content) => content.id) } },
-      orderBy: { computedAt: 'desc' },
+      // Secondary key: deterministic "latest per (content, platform)" even
+      // when computed_at ties within a recompute batch. See BUG-QA-003.
+      orderBy: [{ computedAt: 'desc' }, { platform: 'asc' }],
     });
     const latestScores = new Map<string, RankingScore[]>();
     const seen = new Set<string>();
@@ -119,10 +122,9 @@ export class SchedulerService {
   }
 
   private topPlatform(scores: RankingScore[]): AssetPlatform | null {
-    if (scores.length === 0) {
-      return null;
-    }
-    const best = scores.reduce((max, row) => (Number(row.score) > Number(max.score) ? row : max));
-    return best.platform;
+    // SHARED tie-break with RankingEngineService.getRecommendation so the
+    // scheduler overview and the publish-time override recompute can never
+    // disagree on a tie (BUG-QA-003).
+    return pickRecommendedScore(scores)?.platform ?? null;
   }
 }
