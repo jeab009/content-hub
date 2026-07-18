@@ -18,3 +18,15 @@ export const ASSET_TO_POST_PLATFORM: Record<AssetPlatform, Platform> = {
 export function toPostPlatform(assetPlatform: AssetPlatform): Platform {
   return ASSET_TO_POST_PLATFORM[assetPlatform];
 }
+
+/** Reverse of ASSET_TO_POST_PLATFORM (Platform → AssetPlatform). */
+export const POST_TO_ASSET_PLATFORM: Record<Platform, AssetPlatform> = {
+  [Platform.facebook]: AssetPlatform.facebook,
+  [Platform.youtube]: AssetPlatform.youtube,
+  [Platform.tiktok]: AssetPlatform.tiktok,
+  [Platform.line]: AssetPlatform.line_oa,
+};
+
+export function toAssetPlatform(postPlatform: Platform): AssetPlatform {
+  return POST_TO_ASSET_PLATFORM[postPlatform];
+}

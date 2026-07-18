@@ -53,5 +53,8 @@ import { PlatformAdapterRegistry } from './adapters/platform-adapter.registry';
     PlatformAdapterRegistry,
     AdminGuard,
   ],
+  // Phase 3: MetricsModule reuses the same adapters (single source of truth
+  // for mock/live gating) to read post metrics, so the registry is exported.
+  exports: [PlatformAdapterRegistry],
 })
 export class PublishModule {}

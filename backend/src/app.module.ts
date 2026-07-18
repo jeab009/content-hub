@@ -11,6 +11,8 @@ import { ContentModule } from './modules/content/content.module';
 import { RankingModule } from './modules/ranking/ranking.module';
 import { PublishModule } from './modules/publish/publish.module';
 import { SchedulerModule } from './modules/scheduler/scheduler.module';
+import { MetricsModule } from './modules/metrics/metrics.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -31,6 +33,8 @@ import { SchedulerModule } from './modules/scheduler/scheduler.module';
     RankingModule,
     PublishModule,
     SchedulerModule,
+    MetricsModule,
+    DashboardModule,
   ],
 })
 export class AppModule {}

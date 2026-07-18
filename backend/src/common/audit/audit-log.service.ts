@@ -29,7 +29,10 @@ export type AuditAction =
   | 'publish_succeeded'
   | 'publish_failed'
   | 'publish_unconfirmed'
-  | 'publish_ambiguity_resolved';
+  | 'publish_ambiguity_resolved'
+  // Phase 3 — metrics ingestion
+  | 'metrics_sync_run'
+  | 'metric_manual_added';
 
 export type AuditResult = 'success' | 'failure';
 

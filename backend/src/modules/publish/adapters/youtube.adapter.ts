@@ -5,7 +5,12 @@ import { readFile, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { AppConfig } from '../../../config/configuration';
 import { BasePlatformAdapter } from './base-platform.adapter';
-import { PublishArgs, PublishResult } from './platform-adapter.interface';
+import {
+  FetchMetricsArgs,
+  MetricSnapshot,
+  PublishArgs,
+  PublishResult,
+} from './platform-adapter.interface';
 import {
   PublisherAmbiguousError,
   PublisherRejectedError,
@@ -15,8 +20,15 @@ import {
 const YOUTUBE_RESUMABLE_UPLOAD_URL =
   'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status';
 
+const YOUTUBE_ANALYTICS_URL = 'https://youtubeanalytics.googleapis.com/v2/reports';
+
 interface YouTubeVideoResponse {
   id?: string;
+}
+
+interface YouTubeAnalyticsResponse {
+  columnHeaders?: Array<{ name?: string }>;
+  rows?: Array<Array<number>>;
 }
 
 /**
@@ -56,6 +68,63 @@ export class YouTubeAdapter extends BasePlatformAdapter {
         `YouTube only accepts video content; content ${args.content.id} is "${args.content.type}"`,
       );
     }
+  }
+
+  /**
+   * Live video metrics via the YouTube Analytics API (reports.query, which
+   * is synchronous — unlike the bulk Reporting API). reach = views,
+   * engagement = likes+comments+shares, revenue = estimatedRevenue (requires
+   * the yt-analytics-monetary.readonly scope; makedown.md §6). Only reached
+   * when PUBLISHER_IMPL_YOUTUBE != 'mock'.
+   */
+  protected async fetchMetricsLive(
+    args: FetchMetricsArgs,
+    accessToken: string,
+  ): Promise<MetricSnapshot> {
+    const videoId = args.post.externalPostId;
+    if (!videoId) {
+      throw new PublisherValidationError(
+        `Post ${args.post.id} has no externalPostId; cannot read YouTube analytics`,
+      );
+    }
+    const postedAt = args.post.postedAt ?? args.post.createdAt;
+    const startDate = new Date(postedAt).toISOString().slice(0, 10);
+    const endDate = new Date().toISOString().slice(0, 10);
+    const query = new URLSearchParams({
+      ids: 'channel==MINE',
+      startDate,
+      endDate,
+      metrics: 'views,likes,comments,shares,estimatedRevenue',
+      filters: `video==${videoId}`,
+    });
+    let response: Response;
+    try {
+      response = await fetch(`${YOUTUBE_ANALYTICS_URL}?${query.toString()}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+    } catch (error) {
+      throw new PublisherRejectedError(
+        `Network failure reading YouTube analytics: ${(error as Error).message}`,
+      );
+    }
+    if (!response.ok) {
+      throw new PublisherRejectedError(
+        `YouTube Analytics API rejected the read (HTTP ${response.status})`,
+      );
+    }
+    const payload = (await response.json().catch(() => ({}))) as YouTubeAnalyticsResponse;
+    const headers = payload.columnHeaders?.map((column) => column.name) ?? [];
+    const row = payload.rows?.[0] ?? [];
+    const read = (name: string): number => {
+      const index = headers.indexOf(name);
+      const value = index >= 0 ? row[index] : 0;
+      return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+    };
+    return {
+      reach: read('views'),
+      engagement: read('likes') + read('comments') + read('shares'),
+      revenue: Math.round(read('estimatedRevenue') * 100) / 100,
+    };
   }
 
   protected async publishLive(args: PublishArgs, accessToken: string): Promise<PublishResult> {

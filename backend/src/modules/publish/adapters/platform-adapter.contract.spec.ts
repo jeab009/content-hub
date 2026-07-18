@@ -1,7 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { AssetPlatform, ConnectedAccount, Content, ContentType, Post } from '@prisma/client';
 import { AppConfig } from '../../../config/configuration';
-import { PlatformAdapter, PublishArgs } from './platform-adapter.interface';
+import { FetchMetricsArgs, PlatformAdapter, PublishArgs } from './platform-adapter.interface';
 import { FacebookAdapter } from './facebook.adapter';
 import { YouTubeAdapter } from './youtube.adapter';
 import {
@@ -103,9 +103,34 @@ describe.each(adapterCases)('PlatformAdapter contract — $name (dry-run)', ({ p
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('stubs Phase 3/4 capabilities with a typed not-implemented error', async () => {
+  it('reads metrics in dry-run mode: deterministic synthetic snapshot with ZERO network I/O', async () => {
+    const metricsArgs: FetchMetricsArgs = {
+      post: { id: 'post-1', postedAt: new Date('2026-07-10T00:00:00Z') } as Post,
+      account: { id: 'acct-1' } as ConnectedAccount,
+      accessToken: 'decrypted-token',
+    };
+    const first = await adapter.fetchMetrics(metricsArgs);
+    const second = await adapter.fetchMetrics(metricsArgs);
+
+    expect(first).toEqual(second); // deterministic for a given post
+    expect(first.reach).toBeGreaterThan(0);
+    expect(first.engagement).toBeGreaterThanOrEqual(0);
+    expect(first.revenue).toBeGreaterThanOrEqual(0);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects fetchMetrics with a missing token — even in dry-run, so the rehearsal is faithful', async () => {
+    const metricsArgs: FetchMetricsArgs = {
+      post: { id: 'post-1' } as Post,
+      account: { id: 'acct-1' } as ConnectedAccount,
+      accessToken: null,
+    };
+    await expect(adapter.fetchMetrics(metricsArgs)).rejects.toThrow(PublisherTokenError);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('stubs Phase 4 capabilities with a typed not-implemented error', async () => {
     const post = { id: 'post-1' } as Post;
-    await expect(adapter.fetchMetrics(post)).rejects.toThrow(PlatformCapabilityNotImplementedError);
     await expect(adapter.fetchComments(post)).rejects.toThrow(
       PlatformCapabilityNotImplementedError,
     );

@@ -20,17 +20,44 @@ export interface PublishResult {
 }
 
 /**
+ * A single point-in-time reading of a live post's performance, as returned
+ * by an adapter's fetchMetrics. `revenue` is in major currency units (THB),
+ * 2 decimal places — the platform's monetization payout for this post, NOT
+ * a computed/estimated figure (see makedown.md §6). `reach` and
+ * `engagement` are cumulative counts as of `fetchMetrics` time.
+ */
+export interface MetricSnapshot {
+  reach: number;
+  engagement: number;
+  revenue: number;
+}
+
+/**
+ * Everything an adapter needs to read one post's metrics. Like PublishArgs,
+ * the decrypted token travels separately and `accessToken: null` means the
+ * caller could not obtain one — adapters reject that with PublisherTokenError
+ * even in mock mode, so a rehearsal is faithful to the live path.
+ */
+export interface FetchMetricsArgs {
+  post: Post;
+  account: ConnectedAccount;
+  accessToken: string | null;
+}
+
+/**
  * Contract every platform adapter implements. Pass B ships publish() for
- * Facebook and YouTube; fetchMetrics/fetchComments/replyComment are typed
- * stubs that throw PlatformCapabilityNotImplementedError until Phase 3/4
- * fill them in. Adapters honor the PUBLISHER_IMPL_* env flags: in `mock`
- * mode (the mandatory default outside production) publish() performs no
- * network I/O and returns a deterministic dry-run external id.
+ * Facebook and YouTube; Phase 3 fills in fetchMetrics (earnings/reach
+ * ingestion). fetchComments/replyComment stay typed stubs that throw
+ * PlatformCapabilityNotImplementedError until Phase 4. Adapters honor the
+ * PUBLISHER_IMPL_* env flags: in `mock` mode (the mandatory default outside
+ * production) publish() and fetchMetrics() perform no network I/O — publish
+ * returns a deterministic dry-run id, fetchMetrics returns a deterministic
+ * synthetic snapshot derived from the post.
  */
 export interface PlatformAdapter {
   readonly platform: AssetPlatform;
   publish(args: PublishArgs): Promise<PublishResult>;
-  fetchMetrics(post: Post): Promise<never>;
+  fetchMetrics(args: FetchMetricsArgs): Promise<MetricSnapshot>;
   fetchComments(post: Post): Promise<never>;
   replyComment(post: Post, externalCommentId: string, message: string): Promise<never>;
 }
