@@ -29,6 +29,16 @@ Test failures / runtime errors found during build. Full root-cause detail lives 
 
 - Phase 1.5 QA: SIGNED OFF. 39/39 tests, migration verified on real Postgres, seed idempotency verified ×2, live boot clean, 8 extra adversarial edge cases on copyright gate all fail-closed. Zero code bugs.
 
+## Phase 2 — CMS + Ranking + Publish (2026-07-17..18)
+
+| ID | Severity | Found by | Summary | Status |
+|---|---|---|---|---|
+| P2-OBS-1 | Low (demo data) | dev smoke | Publish dispatch → `token_invalid` failure: connected_accounts rows (facebook, youtube) in demo volume were encrypted with a different `APP_ENCRYPTION_KEY` (prior session), so AES-GCM decrypt fails. Publish flow handled it correctly (clean fail, audit-logged, post→failed). NOT a code defect. | Open — re-connect accounts against current key to exercise full mock-publish success path; unit tests already cover mock adapter success + idempotency |
+
+- Phase 2A (CMS backend): 39→126 tests. Copyright gate at ready-transition verified live (comedy exempt, drama/product require evidence, fail-closed). Committed `ce524ac`.
+- Phase 2B (ranking/publish/adapters): 126→210 tests. Verified live: ranking + 4-factor reasoning, step-up re-auth (empty→400/wrong→401/correct→ok), server-side was_override both directions, override reason persisted, idempotency claim (unit-tested "no double post"). Committed `4516195`.
+- Two interruptions from Anthropic session limits mid-pass; both resumed and verified by main thread (lint/typecheck/tests/docker boot/curl) before committing — no fake success.
+
 ## Carry-forward to Phase 2 kickoff (from Bug Fixer close-out, 2026-07-16)
 
 - QC review + QA baseline ของ Phase 2 WIP commits ก่อนเขียนโค้ดใหม่ — migration `20260716054701_phase2_publish_cms_ranking` ถูก apply ใน demo DB แล้ว ต้อง treat schema เป็น already-live

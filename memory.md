@@ -31,7 +31,8 @@
 ## Build status (2026-07-16)
 
 - **Implemented**: Phase 1 (foundation) + **Phase 1.5 (Compliance & Schema Gate)** — schema amendment (copyright gate fields, `content_assets`, `pillar_ratio_policies`, `platform_cadence_targets`), `CopyrightGateService` fail-closed, seed provisional defaults. QA signed off 39/39 tests บน Postgres จริง. ดู [makedown.md](makedown.md) §9.5
-- **Not implemented**: Content CMS, ranking engine, publish flow, dashboard UI, comment aggregation, YouTube/TikTok/LINE platforms (Phase 2-5). มี Phase 2 WIP บางส่วน commit แยกไว้ (ยังไม่ผ่าน QA — content.service, upload-validation, admin.guard, publish orchestration config/audit hooks, migration `20260716054701`)
+- **Phase 2 backend เสร็จ (2026-07-17..18)**: CMS (ContentController CRUD+upload+asset, copyright gate), Ranking v1 (explainable, ranking_scores), Publish flow (step-up re-auth, server-side was_override, idempotency, posted_unconfirmed resolution), FB+YouTube adapters (mock/live gating), Google OAuth connect flow, Scheduler overview. 210 tests. commit `ce524ac` (2A) + `4516195` (2B). **ยังไม่มี QC/QA รอบ Phase 2 เต็ม** และ **ยังไม่มี frontend (Pass C)**
+- **Not implemented**: Phase 2 frontend (CMS/Scheduler/publish UI), dashboard (Phase 3), comment aggregation (Phase 4), TikTok/LINE (Phase 5)
 - Phase 1.5 ค้าง: Meta App Review submission (admin ต้องกรอก docs/meta-app-review-status.md), ยืนยันตัวเลข pillar ratio + cadence target จริง (ตอนนี้ provisional 40/30/30, FB 7/wk, YT 3/wk)
 - Known bugs BUG-001~004 (Nest DI, dotenv, circular import, queue name) — ทั้งหมด fixed แล้ว ดู [errorlog.md](errorlog.md)
 
