@@ -1,11 +1,14 @@
 import type {
   AspectRatio,
   AssetPlatform,
+  CadencePaceStatus,
   ContentPillar,
   ContentStatus,
   ContentType,
   CopyrightClearance,
   LicensingStatus,
+  PostPlatform,
+  PostStatus,
 } from '@/lib/api-client';
 
 export const CONTENT_TYPES: ContentType[] = ['video', 'image', 'text'];
@@ -61,6 +64,53 @@ const CLEARANCE_BADGE: Record<CopyrightClearance, string> = {
   blocked: 'bg-danger',
 };
 
+/** Post target platform (Prisma `Platform`, distinct from AssetPlatform). */
+const POST_PLATFORM_LABELS: Record<PostPlatform, string> = {
+  facebook: 'Facebook',
+  youtube: 'YouTube',
+  tiktok: 'TikTok (Phase 5)',
+  line: 'LINE OA (Phase 5)',
+};
+
+const POST_STATUS_LABELS: Record<PostStatus, string> = {
+  draft: 'Draft',
+  scheduled: 'Scheduled',
+  posted: 'Posted',
+  posted_unconfirmed: 'Posted (unconfirmed)',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+};
+
+const POST_STATUS_BADGE: Record<PostStatus, string> = {
+  draft: 'bg-secondary',
+  scheduled: 'bg-info',
+  posted: 'bg-success',
+  posted_unconfirmed: 'bg-warning text-dark',
+  failed: 'bg-danger',
+  cancelled: 'bg-dark',
+};
+
+const PACE_LABELS: Record<CadencePaceStatus, string> = {
+  on_pace: 'On pace',
+  under_target: 'Under target',
+  target_met: 'Target met',
+};
+
+/** Pace chip colour paired with the PACE_LABELS text — colour never alone. */
+const PACE_BADGE: Record<CadencePaceStatus, string> = {
+  on_pace: 'bg-success',
+  under_target: 'bg-warning text-dark',
+  target_met: 'bg-primary',
+};
+
+/** Humanizes a ranking factor name (e.g. `engagement_history`). */
+function humanizeFactor(value: string): string {
+  return value
+    .split('_')
+    .map((part) => titleCase(part))
+    .join(' ');
+}
+
 function titleCase(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
@@ -75,4 +125,10 @@ export const labels = {
   status: (value: ContentStatus): string => titleCase(value),
   statusBadgeClass: (value: ContentStatus): string => STATUS_BADGE[value],
   clearanceBadgeClass: (value: CopyrightClearance): string => CLEARANCE_BADGE[value],
+  postPlatform: (value: PostPlatform): string => POST_PLATFORM_LABELS[value],
+  postStatus: (value: PostStatus): string => POST_STATUS_LABELS[value],
+  postStatusBadgeClass: (value: PostStatus): string => POST_STATUS_BADGE[value],
+  pace: (value: CadencePaceStatus): string => PACE_LABELS[value],
+  paceBadgeClass: (value: CadencePaceStatus): string => PACE_BADGE[value],
+  factor: (value: string): string => humanizeFactor(value),
 };

@@ -181,6 +181,117 @@ export interface CreateContentAssetInput {
   mediaUrl: string;
 }
 
+// --- Ranking / Scheduler / Publish domain types (Pass C2). String unions
+// mirror the backend Prisma enums exactly — keep them in sync.
+
+/** Publish target enum on a Post row (Prisma `Platform`, note `line` not `line_oa`). */
+export type PostPlatform = 'facebook' | 'youtube' | 'tiktok' | 'line';
+export type PostStatus =
+  | 'draft'
+  | 'scheduled'
+  | 'posted'
+  | 'posted_unconfirmed'
+  | 'failed'
+  | 'cancelled';
+export type CadencePaceStatus = 'on_pace' | 'under_target' | 'target_met';
+export type CadencePeriodUnit = 'week' | 'month';
+
+/**
+ * One explainable factor of a ranking score — this is what makes the
+ * recommendation auditable. `contribution = weight * value`; `input` carries
+ * the raw numbers the value was derived from so the UI can render "why".
+ */
+export interface RankingFactor {
+  name: string;
+  input: Record<string, string | number | boolean | null>;
+  weight: number;
+  value: number;
+  contribution: number;
+}
+
+/** Contents of `ranking_scores.reasoning` (jsonb) — the explainability payload. */
+export interface RankingReasoning {
+  engineVersion: string;
+  factors: RankingFactor[];
+  total: number;
+}
+
+export interface RankingScore {
+  id: string;
+  contentId: string;
+  platform: AssetPlatform;
+  score: number;
+  reasoning: RankingReasoning | null;
+  engineVersion: string;
+  computedAt: string;
+}
+
+export interface CadenceOverviewItem {
+  platform: AssetPlatform;
+  targetPostsPerPeriod: number;
+  periodUnit: CadencePeriodUnit;
+  periodStart: string;
+  periodEnd: string;
+  publishedThisPeriod: number;
+  remaining: number;
+  status: CadencePaceStatus;
+}
+
+export interface ReadyContentScore {
+  id: string;
+  platform: AssetPlatform;
+  score: number;
+  computedAt: string;
+}
+
+export interface ReadyContentOverview {
+  contentId: string;
+  title: string;
+  type: ContentType;
+  contentPillar: ContentPillar | null;
+  createdAt: string;
+  latestScores: ReadyContentScore[];
+  recommendedPlatform: AssetPlatform | null;
+}
+
+export interface SchedulerOverview {
+  generatedAt: string;
+  cadence: CadenceOverviewItem[];
+  readyContents: ReadyContentOverview[];
+}
+
+export interface Post {
+  id: string;
+  contentId: string;
+  platform: PostPlatform;
+  status: PostStatus;
+  selectedPlatform: AssetPlatform | null;
+  recommendedPlatform: AssetPlatform | null;
+  wasOverride: boolean;
+  overrideReason: string | null;
+  rankingScoreId: string | null;
+  priorityScore: number | null;
+  externalPostId: string | null;
+  executedBy: string | null;
+  scheduledAt: string | null;
+  postedAt: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Body of POST /api/posts. Deliberately omits `wasOverride` and
+ * `recommendedPlatform`: the backend recomputes both server-side and rejects
+ * (400) any request that tries to smuggle them in.
+ */
+export interface CreatePostInput {
+  contentId: string;
+  platform: AssetPlatform;
+  password: string;
+  overrideReason?: string;
+}
+
 function buildContentQuery(query: ListContentQuery = {}): string {
   const params = new URLSearchParams();
   if (query.type) params.set('type', query.type);
@@ -259,6 +370,55 @@ export const apiClient = {
   removeAsset: (contentId: string, assetId: string, csrfToken: string) =>
     request<void>(`/api/contents/${contentId}/assets/${assetId}`, {
       method: 'DELETE',
+      csrfToken,
+    }),
+
+  // --- Ranking endpoints ---
+
+  /** Recomputes scores for every ranked platform and returns the new rows. */
+  rankContent: (contentId: string, csrfToken: string) =>
+    request<RankingScore[]>(`/api/contents/${contentId}/rank`, {
+      method: 'POST',
+      csrfToken,
+    }),
+
+  /** Latest score per platform for a content (no recompute). */
+  getScores: (contentId: string) =>
+    request<RankingScore[]>(`/api/contents/${contentId}/scores`),
+
+  // --- Scheduler endpoint ---
+
+  getSchedulerOverview: () => request<SchedulerOverview>('/api/scheduler/overview'),
+
+  // --- Publish endpoints (all mutations carry step-up password + CSRF) ---
+
+  /** Create a publish intent AND dispatch it in one call. Never automatic. */
+  createPost: (body: CreatePostInput, csrfToken: string) =>
+    request<Post>('/api/posts', { method: 'POST', body, csrfToken }),
+
+  /** Retry a draft/failed post (posted_unconfirmed is NOT retryable). */
+  publishPost: (id: string, password: string, csrfToken: string) =>
+    request<Post>(`/api/posts/${id}/publish`, {
+      method: 'POST',
+      body: { password },
+      csrfToken,
+    }),
+
+  listPosts: (status?: PostStatus) =>
+    request<Post[]>(`/api/posts${status ? `?status=${status}` : ''}`),
+
+  /** Confirmed live on the platform — mark posted (externalPostId required). */
+  resolvePosted: (id: string, externalPostId: string, csrfToken: string) =>
+    request<Post>(`/api/posts/${id}/resolve-posted`, {
+      method: 'POST',
+      body: { externalPostId },
+      csrfToken,
+    }),
+
+  /** Nothing found live — reopen the post for retry. */
+  resolveNotPosted: (id: string, csrfToken: string) =>
+    request<Post>(`/api/posts/${id}/resolve-not-posted`, {
+      method: 'POST',
       csrfToken,
     }),
 };

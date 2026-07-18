@@ -10,6 +10,8 @@ interface AppHeaderProps {
 
 const NAV_LINKS = [
   { href: '/content', label: 'Content' },
+  { href: '/scheduler', label: 'Scheduler' },
+  { href: '/posts', label: 'Posts' },
   { href: '/settings', label: 'Settings' },
 ];
 
