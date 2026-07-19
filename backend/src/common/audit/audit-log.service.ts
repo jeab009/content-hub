@@ -1,4 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { AuditLogResult, Prisma } from '@prisma/client';
+import { PrismaService } from '../../modules/prisma/prisma.service';
 import { redactSensitive } from '../utils/redact.util';
 
 /**
@@ -64,35 +66,99 @@ export interface AuditEntry {
 }
 
 /**
- * Structured audit logging (security decision #7). Phase 1 has no dedicated
- * audit-log table (not in the approved 5-table schema), so entries are
- * emitted as structured JSON log lines. This is a deliberate scope decision,
- * not an oversight — see docs/security-decisions.md. Wiring this to a
- * persistent, queryable sink (DB table or log aggregator) is a Phase 2+
- * concern.
+ * Structured audit logging (security decision #7).
+ *
+ * Phase 1 emitted entries as JSON log lines only and deferred a persistent
+ * sink as "a Phase 2+ concern". Phase 5D.1 closes that: every entry is now
+ * ALSO written to the `audit_logs` table. The stdout line is deliberately
+ * kept — it is useful in dev and some deployments tail it — so this is purely
+ * additive to the existing behaviour.
+ *
+ * Why persistence had to happen: stdout audit lines are destroyed by any
+ * container recreate, which was proved empirically (eight manual_external
+ * posts, zero surviving audit lines — docs/phase5-bugfix-feedback.md §5.3),
+ * and bussiness_rule.md rests the copyright gate on the manual-external path
+ * entirely on the audit trail existing.
  *
  * Every entry is passed through redactSensitive so a future call site can't
  * accidentally leak a token into `meta` without a code review catching it —
  * defense in depth alongside the exception filter and logging interceptor.
+ * The SAME redacted object is used for the log line and the persisted row, so
+ * the two can never diverge: there is no code path that writes raw meta.
  */
 @Injectable()
 export class AuditLogService {
   private readonly logger = new Logger('AuditLog');
 
+  constructor(private readonly prisma: PrismaService) {}
+
   record(entry: AuditEntry): void {
+    const timestamp = new Date();
+    // Redact ONCE, then reuse. Both sinks get the identical, already-safe
+    // object — persisting raw meta is not expressible from here.
+    const safeMeta = entry.meta ? redactSensitive(entry.meta) : undefined;
     const safeEntry = {
-      timestamp: new Date().toISOString(),
+      timestamp: timestamp.toISOString(),
       actor: entry.actor,
       action: entry.action,
       result: entry.result,
       ip: entry.ip,
-      meta: entry.meta ? redactSensitive(entry.meta) : undefined,
+      meta: safeMeta,
     };
 
     if (entry.result === 'failure') {
       this.logger.warn(JSON.stringify(safeEntry));
     } else {
       this.logger.log(JSON.stringify(safeEntry));
+    }
+
+    // Fire-and-forget: see persist(). `void` marks the floating promise as
+    // intentional — record() stays synchronous so no caller can accidentally
+    // couple its own latency or failure handling to the audit write.
+    void this.persist(timestamp, entry, safeMeta);
+  }
+
+  /**
+   * Persists one audit row. NON-BLOCKING and NON-TRANSACTIONAL with respect
+   * to the operation being audited — a deliberate choice.
+   *
+   * Joining the audited operation's transaction would mean an audit-write
+   * failure rolls back a publish, a reply, or a disconnect. For this system
+   * that trade is wrong in both directions: the business operations are the
+   * things with real-world side effects (a post is already live on the
+   * platform; a token is already revoked at the provider), so aborting them
+   * to protect a log record cannot un-do anything — it would only desynchronise
+   * the DB from the outside world while still losing the audit row. The
+   * failure mode we accept instead is a missing audit row, which is loudly
+   * logged as an ERROR and is strictly better than today's baseline, where
+   * EVERY row was lost on restart.
+   *
+   * This is an explicit, tested contract, not incidental behaviour — see
+   * audit-log.service.spec.ts ("a failed audit write never breaks the audited
+   * operation").
+   */
+  private async persist(timestamp: Date, entry: AuditEntry, safeMeta: unknown): Promise<void> {
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          timestamp,
+          actor: entry.actor,
+          action: entry.action,
+          result: entry.result as AuditLogResult,
+          ip: entry.ip,
+          // Cast is safe: safeMeta is the output of redactSensitive over a
+          // plain Record — JSON-serializable by construction. Prisma's
+          // InputJsonValue just cannot see that through `unknown`.
+          meta: (safeMeta ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+        },
+      });
+    } catch (error) {
+      // Swallow deliberately — the audited operation has already happened and
+      // must not be affected. Loud enough to alert on.
+      this.logger.error(
+        `Failed to persist audit row for action=${entry.action} result=${entry.result}: ` +
+          `${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 }

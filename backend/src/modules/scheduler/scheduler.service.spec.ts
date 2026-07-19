@@ -1,6 +1,7 @@
-import { AssetPlatform, CadencePeriodUnit } from '@prisma/client';
+import { AssetPlatform, CadencePeriodUnit, EngineVersion } from '@prisma/client';
 import { SchedulerService } from './scheduler.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { activeEngine } from '../ranking/active-ranking-engine.fixture';
 import { pickRecommendedScore } from '../ranking/ranking.constants';
 import { cadencePaceStatus } from './dto/scheduler-overview.dto';
 
@@ -97,7 +98,13 @@ describe('SchedulerService.overview', () => {
         ]),
       },
     };
-    service = new SchedulerService(prisma as unknown as PrismaService);
+    service = new SchedulerService(
+      prisma as unknown as PrismaService,
+      // Scheduler score reads are scoped to the active engine (BUG-P5-02),
+      // using the same fixture as the ranking-engine tests so both surfaces
+      // are configured identically.
+      activeEngine(EngineVersion.v1),
+    );
   });
 
   it('reports per-platform cadence progress against the current week window', async () => {

@@ -333,26 +333,26 @@ model PlatformCadenceTarget {
 }
 
 model Post {
-  id             String     @id @default(uuid()) @db.Uuid
-  contentId      String     @map("content_id") @db.Uuid
-  platform       Platform
-  priorityScore  Decimal?   @map("priority_score") @db.Decimal(10, 4)
-  recommendedAt  DateTime?  @map("recommended_at")
-  scheduledAt    DateTime?  @map("scheduled_at")
-  postedAt       DateTime?  @map("posted_at")
-  status         PostStatus @default(draft)
-  executedBy     String?    @map("executed_by") @db.Uuid
-  externalPostId String?    @map("external_post_id")
+  id                  String         @id @default(uuid()) @db.Uuid
+  contentId           String         @map("content_id") @db.Uuid
+  platform            Platform
+  priorityScore       Decimal?       @map("priority_score") @db.Decimal(10, 4)
+  recommendedAt       DateTime?      @map("recommended_at")
+  scheduledAt         DateTime?      @map("scheduled_at")
+  postedAt            DateTime?      @map("posted_at")
+  status              PostStatus     @default(draft)
+  executedBy          String?        @map("executed_by") @db.Uuid
+  externalPostId      String?        @map("external_post_id")
   // Phase 2 addition: optimistic-concurrency guard for the publish
   // orchestrator's conditional UPDATEs. See docs/publish-orchestration-addendum.md §2.
-  version        Int        @default(0)
+  version             Int            @default(0)
   // Phase 5.0 additions (manual-external-record path). `externalPostUrl` is
   // the human-verifiable permalink the admin pasted when recording a natively
   // published post — nullable because adapter publishes don't produce one.
   // `publishMethod` distinguishes adapter-published from manually-recorded
   // rows for audit/analytics; defaults to `adapter` so legacy rows are valid.
-  externalPostUrl String?       @map("external_post_url")
-  publishMethod   PublishMethod @default(adapter) @map("publish_method")
+  externalPostUrl     String?        @map("external_post_url")
+  publishMethod       PublishMethod  @default(adapter) @map("publish_method")
   // Phase 2 Pass B additions (ranking-informed publish). All nullable
   // because legacy Phase 1 rows predate the ranking engine.
   // `recommendedPlatform` / `wasOverride` are ALWAYS recomputed server-side
@@ -363,8 +363,8 @@ model Post {
   wasOverride         Boolean        @default(false) @map("was_override")
   overrideReason      String?        @map("override_reason")
   rankingScoreId      String?        @map("ranking_score_id") @db.Uuid
-  createdAt      DateTime   @default(now()) @map("created_at")
-  updatedAt      DateTime   @updatedAt @map("updated_at")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
 
   content      Content       @relation(fields: [contentId], references: [id], onDelete: Restrict)
   executor     User?         @relation("PostExecutedBy", fields: [executedBy], references: [id], onDelete: SetNull)
@@ -513,4 +513,58 @@ model EscalationAlert {
   @@unique([ruleKey, windowStart]) // DB-enforced alert dedup
   @@index([raisedAt])
   @@map("escalation_alerts")
+}
+
+// --- Phase 5D.1 addition (durable audit trail) --------------------------
+// Additive-only per the header rule.
+
+// Outcome of an audited operation. Mirrors AuditResult in
+// common/audit/audit-log.service.ts. A two-value enum rather than a boolean
+// so a third outcome (e.g. "denied") can be appended without a data migration.
+enum AuditLogResult {
+  success
+  failure
+}
+
+// Phase 5D.1. Durable audit trail.
+//
+// Phase 1 emitted audit entries as structured JSON to stdout and deferred a
+// table as "a Phase 2+ concern"; it was never picked up. That was proved to be
+// real data loss, not a theoretical gap: eight manual_external posts recorded
+// 12:30–15:32 left ZERO audit lines after a routine container recreate at
+// 15:42 (docs/phase5-bugfix-feedback.md §5.3). It matters because
+// bussiness_rule.md justifies enforcing the copyright gate on the
+// manual-external path ENTIRELY on audit-trail grounds — a justification that
+// did not survive a restart. Rows are written IN ADDITION to the stdout line,
+// which is kept (useful in dev, and some deployments tail it).
+//
+// `action` is a String, not an enum, on purpose: the AuditAction union in
+// audit-log.service.ts is the typed source of truth and has grown in every
+// phase. A Prisma enum would force a schema migration for each new action and
+// make an unknown action a hard write failure — an audit sink must never
+// refuse to record something. Indexed, so it stays queryable either way.
+//
+// `meta` is written ONLY after redactSensitive() — the same redaction the log
+// line gets. Never persist raw passwords/tokens; comment PII rules from
+// Phase 4 hold here too (authorRef/textLength only, never raw author/text).
+model AuditLog {
+  id        String         @id @default(uuid()) @db.Uuid
+  // When the event happened (set by the service), distinct from createdAt,
+  // which is when the row landed. The write is asynchronous, so they differ.
+  timestamp DateTime       @default(now())
+  // Nullable for system/unattended actors (cron, queue workers). Not a FK to
+  // users: the trail must outlive the user row and can record "anonymous"
+  // pre-auth events.
+  actor     String?
+  action    String
+  result    AuditLogResult
+  ip        String?
+  meta      Json?
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  // "What happened to X, and when" — the two queries an audit trail exists to
+  // answer. Both are (filter, time) so they serve filter+sort in one index.
+  @@index([action, createdAt])
+  @@index([actor, createdAt])
+  @@map("audit_logs")
 }

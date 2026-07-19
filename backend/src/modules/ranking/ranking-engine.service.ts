@@ -3,9 +3,12 @@ import { AssetPlatform, EngineVersion, Prisma, RankingScore } from '@prisma/clie
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../../common/audit/audit-log.service';
 import { RankingFactorsService } from './ranking-factors.service';
+import { ActiveRankingEngineService } from './active-ranking-engine.service';
 import {
+  LATEST_SCORE_ORDER_BY,
   RANKED_PLATFORMS,
   RankingReasoning,
+  latestScorePerPlatform,
   pickRecommendedScore,
   round4,
 } from './ranking.constants';
@@ -23,6 +26,7 @@ export class RankingEngineService {
     private readonly prisma: PrismaService,
     private readonly factors: RankingFactorsService,
     private readonly auditLog: AuditLogService,
+    private readonly activeEngine: ActiveRankingEngineService,
   ) {}
 
   /** Recomputes and persists scores for every ranked platform. */
@@ -71,31 +75,42 @@ export class RankingEngineService {
   }
 
   /**
-   * Latest persisted score per platform for a piece of content (the rows
-   * the publish flow's recommendation recompute and the scheduler UI read).
+   * Latest persisted score per platform for a piece of content, SCOPED TO THE
+   * ACTIVE ENGINE (the rows the publish flow's recommendation recompute and
+   * the scheduler UI read).
+   *
+   * BUG-P5-02: this read used to aggregate latest-per-platform across every
+   * engine version. v1 writes 2 rows (facebook, youtube); v2 writes 4. So a
+   * v2 -> v1 rollback left the tiktok/line_oa rows written by v2 permanently
+   * in the recommendation set — v1 never writes those platforms, so nothing
+   * ever superseded them — and pickRecommendedScore then compared a v1 score
+   * against a v2 score. Those are not on the same scale: different factor
+   * sets, different weight vectors. The engine filter below is what makes a
+   * recommendation set internally comparable.
+   *
+   * The filter is applied in the WHERE clause rather than in memory so the
+   * database never returns foreign-engine rows in the first place, and so the
+   * (content_id, computed_at) index still serves the query.
+   *
+   * Rows from the non-active engine are IGNORED, never deleted — see the
+   * migration note in docs: history stays attributable, which is the entire
+   * reason EngineVersion exists.
    */
   async getLatestScores(contentId: string): Promise<RankingScore[]> {
     const rows = await this.prisma.rankingScore.findMany({
-      where: { contentId },
-      // Secondary key makes "latest row per platform" deterministic when two
-      // scores share a computed_at (e.g. same recompute batch) — without it
-      // Postgres row order is arbitrary and the tie-break below is fed a
-      // non-deterministic set. See BUG-QA-003.
-      orderBy: [{ computedAt: 'desc' }, { platform: 'asc' }],
+      where: { contentId, engineVersion: this.activeEngine.version },
+      orderBy: LATEST_SCORE_ORDER_BY,
     });
 
-    const latestByPlatform = new Map<AssetPlatform, RankingScore>();
-    for (const row of rows) {
-      if (!latestByPlatform.has(row.platform)) {
-        latestByPlatform.set(row.platform, row);
-      }
-    }
-    return [...latestByPlatform.values()];
+    return latestScorePerPlatform(rows);
   }
 
   /**
-   * The platform with the highest latest score, or null when the content
-   * has never been ranked. Ties break toward the earlier entry in
+   * The platform with the highest latest score, or null when the content has
+   * never been ranked BY THE ACTIVE ENGINE (a content ranked only under the
+   * other engine reads as unranked — see getLatestScores; the honest answer
+   * is "no current recommendation", not a stale cross-engine one).
+   * Ties break toward the earlier entry in
    * RANKED_PLATFORMS order (deterministic, documented) — via the SHARED
    * pickRecommendedScore so this agrees with the scheduler overview.
    */

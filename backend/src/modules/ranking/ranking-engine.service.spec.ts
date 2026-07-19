@@ -1,9 +1,10 @@
 import { NotFoundException } from '@nestjs/common';
-import { AssetPlatform, ContentPillar } from '@prisma/client';
+import { AssetPlatform, ContentPillar, EngineVersion } from '@prisma/client';
 import { RankingEngineService } from './ranking-engine.service';
 import { RankingFactorsService } from './ranking-factors.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../../common/audit/audit-log.service';
+import { activeEngine } from './active-ranking-engine.fixture';
 import { FACTOR_WEIGHTS, RankingFactor, RankingReasoning } from './ranking.constants';
 
 function factor(name: RankingFactor['name'], weight: number, value: number): RankingFactor {
@@ -65,6 +66,10 @@ describe('RankingEngineService', () => {
       prisma as unknown as PrismaService,
       factors as unknown as RankingFactorsService,
       auditLog as unknown as AuditLogService,
+      // Reads are scoped to the active engine (BUG-P5-02). These v1 tests run
+      // under the default engine; the scoping itself is covered by
+      // ranking-engine-mixing.spec.ts.
+      activeEngine(EngineVersion.v1),
     );
   });
 

@@ -46,6 +46,44 @@ export interface ScoreLike {
 }
 
 /**
+ * The ONE ordering every latest-score query uses. `computed_at DESC` selects
+ * the newest row; `platform ASC` is the deterministic secondary key that makes
+ * "latest row per platform" reproducible when two scores share a computed_at
+ * (same recompute batch) — without it Postgres row order is arbitrary and the
+ * tie-break is fed a non-deterministic set. See BUG-QA-003.
+ *
+ * Shared so the per-content read (RankingEngineService) and the batched
+ * scheduler read (SchedulerService) cannot drift apart. Prisma does not mutate
+ * the array it is given, so one shared instance is safe.
+ */
+export const LATEST_SCORE_ORDER_BY: Prisma.RankingScoreOrderByWithRelationInput[] = [
+  { computedAt: 'desc' },
+  { platform: 'asc' },
+];
+
+/**
+ * Collapses rows already sorted by LATEST_SCORE_ORDER_BY into the newest row
+ * per platform. Pure, and shared by both read surfaces for the same reason
+ * pickRecommendedScore is: two implementations of "which rows are current?"
+ * is two chances to disagree.
+ *
+ * Callers are responsible for scoping the input to a single engine version
+ * (BUG-P5-02) — this function deliberately does not filter, so it stays a
+ * pure list operation with no config dependency.
+ */
+export function latestScorePerPlatform<T extends { platform: AssetPlatform }>(
+  rowsNewestFirst: readonly T[],
+): T[] {
+  const latestByPlatform = new Map<AssetPlatform, T>();
+  for (const row of rowsNewestFirst) {
+    if (!latestByPlatform.has(row.platform)) {
+      latestByPlatform.set(row.platform, row);
+    }
+  }
+  return [...latestByPlatform.values()];
+}
+
+/**
  * The single, shared "which platform does this set of scores recommend?"
  * rule. Highest score wins; ties break deterministically toward the platform
  * that appears earlier in PLATFORM_TIE_BREAK_ORDER (a platform not in the list

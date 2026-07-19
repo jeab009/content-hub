@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { RankingScore } from '@prisma/client';
-import { AppConfig } from '../../config/configuration';
+import { EngineVersion, RankingScore } from '@prisma/client';
+import { ActiveRankingEngineService } from './active-ranking-engine.service';
 import { RankingEngineService } from './ranking-engine.service';
 import { RankingEngineV2Service } from './ranking-engine-v2.service';
 
@@ -10,32 +9,34 @@ import { RankingEngineV2Service } from './ranking-engine-v2.service';
  * (default 'v1'). One place makes the choice, so no caller has to know the
  * flag exists.
  *
- * Only the WRITE path is versioned. Reads (getLatestScores /
- * getRecommendation) operate on already-persisted rows and stay on the v1
- * service for everyone — the publish flow's was_override recompute must read
- * scores the same way no matter which engine wrote them, and BUG-QA-003's
- * "scheduler and per-content recommendation must never disagree" guarantee
- * depends on there being exactly one read implementation.
+ * There is still exactly ONE read implementation (getLatestScores /
+ * getRecommendation on RankingEngineService) shared by both engines — the
+ * BUG-QA-003 guarantee that the scheduler and the per-content recommendation
+ * can never disagree depends on that. What changed in Phase 5D.1 is that the
+ * single read implementation is now SCOPED to the active engine version
+ * (BUG-P5-02): reads are engine-agnostic in code, but the row set they read
+ * is not allowed to mix engines, because scores from different engines are
+ * not comparable.
  */
 @Injectable()
 export class RankingEngineSelectorService {
-  private readonly engine: 'v1' | 'v2';
-
   constructor(
-    configService: ConfigService,
+    private readonly activeEngine: ActiveRankingEngineService,
     private readonly v1: RankingEngineService,
     private readonly v2: RankingEngineV2Service,
-  ) {
-    this.engine = configService.get<AppConfig>('app')?.ranking.engine ?? 'v1';
-  }
+  ) {}
 
-  /** The engine version this instance is configured to run. */
-  get activeEngineVersion(): 'v1' | 'v2' {
-    return this.engine;
+  /**
+   * The engine version this instance is configured to run. Delegates to
+   * ActiveRankingEngineService so the write path and the (engine-scoped)
+   * read path can never resolve the flag differently.
+   */
+  get activeEngineVersion(): EngineVersion {
+    return this.activeEngine.version;
   }
 
   computeScores(contentId: string, actorId: string): Promise<RankingScore[]> {
-    return this.engine === 'v2'
+    return this.activeEngine.version === EngineVersion.v2
       ? this.v2.computeScores(contentId, actorId)
       : this.v1.computeScores(contentId, actorId);
   }

@@ -2,7 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { AssetPlatform, PostStatus, RankingScore } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { toPostPlatform } from '../../common/utils/platform-map.util';
-import { pickRecommendedScore } from '../ranking/ranking.constants';
+import { ActiveRankingEngineService } from '../ranking/active-ranking-engine.service';
+import {
+  LATEST_SCORE_ORDER_BY,
+  latestScorePerPlatform,
+  pickRecommendedScore,
+} from '../ranking/ranking.constants';
 import { currentPeriodEnd, currentPeriodStart } from '../../common/utils/cadence-period.util';
 import {
   CadenceOverviewItemDto,
@@ -21,7 +26,10 @@ const LIVE_POST_STATUSES: PostStatus[] = [PostStatus.posted, PostStatus.posted_u
  */
 @Injectable()
 export class SchedulerService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly activeEngine: ActiveRankingEngineService,
+  ) {}
 
   async overview(now: Date = new Date()): Promise<SchedulerOverviewDto> {
     const [cadence, readyContents] = await Promise.all([
@@ -84,26 +92,33 @@ export class SchedulerService {
       return [];
     }
 
-    // One query for all scores, newest first; keep the first row seen per
-    // (content, platform) = the latest score. Avoids an N+1 per content.
+    // One query for all scores, newest first; keep the newest row per
+    // (content, platform). Avoids an N+1 per content.
+    //
+    // BUG-P5-02: scoped to the ACTIVE engine, with the same filter, the same
+    // ordering (LATEST_SCORE_ORDER_BY) and the same collapse rule
+    // (latestScorePerPlatform) as RankingEngineService.getLatestScores. This
+    // surface and the per-content ranking read must select the SAME rows
+    // before pickRecommendedScore ever runs — a shared tie-break over two
+    // differently-scoped row sets would still let the two disagree, which is
+    // the guarantee BUG-QA-003 exists to protect.
     const scores = await this.prisma.rankingScore.findMany({
-      where: { contentId: { in: contents.map((content) => content.id) } },
-      // Secondary key: deterministic "latest per (content, platform)" even
-      // when computed_at ties within a recompute batch. See BUG-QA-003.
-      orderBy: [{ computedAt: 'desc' }, { platform: 'asc' }],
+      where: {
+        contentId: { in: contents.map((content) => content.id) },
+        engineVersion: this.activeEngine.version,
+      },
+      orderBy: LATEST_SCORE_ORDER_BY,
     });
-    const latestScores = new Map<string, RankingScore[]>();
-    const seen = new Set<string>();
+
+    const rowsByContent = new Map<string, RankingScore[]>();
     for (const score of scores) {
-      const key = `${score.contentId}/${score.platform}`;
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      const list = latestScores.get(score.contentId) ?? [];
+      const list = rowsByContent.get(score.contentId) ?? [];
       list.push(score);
-      latestScores.set(score.contentId, list);
+      rowsByContent.set(score.contentId, list);
     }
+    const latestScores = new Map<string, RankingScore[]>(
+      [...rowsByContent].map(([contentId, rows]) => [contentId, latestScorePerPlatform(rows)]),
+    );
 
     return contents.map((content) => ({
       contentId: content.id,

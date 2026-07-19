@@ -6,6 +6,8 @@ import { AuditLogService } from '../../common/audit/audit-log.service';
 import { RankingEngineService } from './ranking-engine.service';
 import { RankingEngineV2Service } from './ranking-engine-v2.service';
 import { RankingEngineSelectorService } from './ranking-engine-selector.service';
+import { ActiveRankingEngineService } from './active-ranking-engine.service';
+import { activeEngine } from './active-ranking-engine.fixture';
 import { RankingFactorsService } from './ranking-factors.service';
 import { RankingFactorsV2Service } from './ranking-factors-v2.service';
 import {
@@ -174,7 +176,12 @@ describe('v1 → v2 golden regression (legacy FB/YT content, no history)', () =>
     const audit = { record: jest.fn() } as unknown as AuditLogService;
 
     const v1Prisma = v1Harness.prisma as unknown as PrismaService;
-    const v1 = new RankingEngineService(v1Prisma, new RankingFactorsService(v1Prisma), audit);
+    const v1 = new RankingEngineService(
+      v1Prisma,
+      new RankingFactorsService(v1Prisma),
+      audit,
+      activeEngine(EngineVersion.v1),
+    );
 
     const v2Prisma = v2Harness.prisma as unknown as PrismaService;
     const v2 = new RankingEngineV2Service(
@@ -203,9 +210,12 @@ describe('v1 → v2 golden regression (legacy FB/YT content, no history)', () =>
   it('v1 still scores exactly its two platforms — v2 did not widen it', async () => {
     const harness = buildEmptyHistoryPrisma();
     const prismaService = harness.prisma as unknown as PrismaService;
-    const v1 = new RankingEngineService(prismaService, new RankingFactorsService(prismaService), {
-      record: jest.fn(),
-    } as unknown as AuditLogService);
+    const v1 = new RankingEngineService(
+      prismaService,
+      new RankingFactorsService(prismaService),
+      { record: jest.fn() } as unknown as AuditLogService,
+      activeEngine(EngineVersion.v1),
+    );
 
     await v1.computeScores(CONTENT.id, 'admin-1');
 
@@ -246,7 +256,10 @@ describe('RankingEngineSelectorService', () => {
       get: jest.fn().mockReturnValue(engine ? { ranking: { engine } } : undefined),
     } as unknown as ConfigService;
     return new RankingEngineSelectorService(
-      configService,
+      // The selector no longer reads the flag itself — it delegates to the
+      // service that the engine-scoped READ path also uses, so the write and
+      // read sides can never resolve RANKING_ENGINE differently (BUG-P5-02).
+      new ActiveRankingEngineService(configService),
       v1 as unknown as RankingEngineService,
       v2 as unknown as RankingEngineV2Service,
     );

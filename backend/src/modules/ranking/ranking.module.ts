@@ -6,6 +6,7 @@ import { RankingFactorsService } from './ranking-factors.service';
 import { RankingEngineV2Service } from './ranking-engine-v2.service';
 import { RankingFactorsV2Service } from './ranking-factors-v2.service';
 import { RankingEngineSelectorService } from './ranking-engine-selector.service';
+import { ActiveRankingEngineService } from './active-ranking-engine.service';
 
 /**
  * Rule-based ranking. Both engines live here side by side:
@@ -29,8 +30,12 @@ import { RankingEngineSelectorService } from './ranking-engine-selector.service'
     RankingEngineV2Service,
     RankingFactorsV2Service,
     RankingEngineSelectorService,
+    ActiveRankingEngineService,
     AdminGuard,
   ],
-  exports: [RankingEngineService],
+  // ActiveRankingEngineService is exported because the scheduler's batched
+  // score read must scope to the same engine as the per-content read
+  // (BUG-P5-02); see SchedulerModule.
+  exports: [RankingEngineService, ActiveRankingEngineService],
 })
 export class RankingModule {}

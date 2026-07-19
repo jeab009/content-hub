@@ -3,6 +3,87 @@
 > Note: Phases 2–4 were tracked in `docs/phase*-*.md` rather than here; this
 > file resumes at Phase 5.
 
+## Phase 5D.1 — Engine-scoped ranking reads + durable audit trail (2026-07-19)
+
+Backend-only consolidation pass. Closes the two items that gated the ranking-v2
+enable decision (`docs/phase5-bugfix-feedback.md` §3, §5.3). Visual QA (5D.2) is
+a separate pass; no frontend file changed. **`RANKING_ENGINE` still defaults to
+`v1`** — enabling v2 is the admin's decision and comes after this fix is
+verified.
+
+### Fixed
+
+- **BUG-P5-02 (Medium) — recommendations could mix ranking-engine versions.**
+  `getLatestScores` aggregated latest-per-platform with no engine filter. v1
+  writes 2 score rows (facebook, youtube); v2 writes 4 (adds tiktok, line_oa).
+  Because v1 never writes the two extra platforms, a v2 → v1 rollback left the
+  v2 tiktok/line_oa rows in the recommendation set permanently — nothing ever
+  superseded them — so `pickRecommendedScore` compared a v1 score against a v2
+  score. Those are computed from different factor sets under different weight
+  vectors and are not on the same scale. Observed live in the demo DB: facebook
+  0.4822 (v1) beating tiktok 0.4782 (v2) by 0.004 while the UI badge read
+  "Engine v1 · 4 factors".
+
+  Both read surfaces are now scoped to the active engine **in the WHERE
+  clause**, sharing one filter, one ordering (`LATEST_SCORE_ORDER_BY`) and one
+  collapse rule (`latestScorePerPlatform`):
+  - `RankingEngineService.getLatestScores` / `getRecommendation` (per-content
+    read; feeds the publish flow's `was_override` recompute)
+  - `SchedulerService.readyContentsWithScores` (batched scheduler overview)
+
+  BUG-QA-003 is preserved and strengthened: `pickRecommendedScore` remains the
+  single shared tie-break, and the two surfaces now also select the *same rows*
+  before it runs. A shared tie-break over two differently-scoped row sets could
+  still have disagreed.
+
+  Pre-existing mixed rows are **left on disk and ignored** — no data migration,
+  nothing deleted. Historical scores stay attributable to the engine that
+  produced them, which is the reason `EngineVersion` exists.
+
+### Added
+
+- **Durable audit trail** — new `audit_logs` table (migration
+  `20260719190730_phase5d1_audit_logs`, additive). `AuditLogService.record()`
+  now persists every entry **in addition to** the existing stdout JSON line.
+  Previously the trail was stdout-only and was destroyed by any container
+  recreate — proven, not theoretical: 8 `manual_external` posts left zero
+  surviving audit lines. `bussiness_rule.md` justifies the copyright gate on the
+  manual-external path entirely on audit-trail grounds.
+  - `meta` is persisted **only after `redactSensitive()`** — the same redacted
+    object used for the log line, so the two can never diverge and raw
+    passwords/tokens/PII cannot be written. Phase 4 comment PII rules
+    (`authorRef`/`textLength` only) hold unchanged.
+  - The write is **non-blocking and non-transactional** with the operation it
+    audits: a failed audit write logs an ERROR and never rolls back a publish.
+    Explicit and tested.
+  - `action` is stored as an indexed String, not a Prisma enum — the typed
+    `AuditAction` union stays the source of truth, and an audit sink must never
+    refuse to record an unknown action.
+  - Indexes on `(action, created_at)` and `(actor, created_at)`.
+- **`GET /api/audit-logs`** — admin-only, paginated, filterable by
+  `action` / `actor` / `result` / `from` / `to`. `SessionAuthGuard + AdminGuard`,
+  no CsrfGuard (GET, read-only convention), `pageSize` capped at 200. Read-only
+  by design: no route edits or deletes an audit row. Nothing is re-redacted on
+  read because nothing sensitive was ever written.
+- `ActiveRankingEngineService` — one resolver for "which engine is in effect",
+  used by both the write selector and both read surfaces so they cannot drift.
+
+### Tests
+
+Backend **378 → 401** (35 → 38 suites). New: `ranking-engine-mixing.spec.ts`
+(10 — engine-mixing both directions, both surfaces agreeing under mixed data,
+v1 unchanged, v1→v2→v1 round trip), `audit-log.service.spec.ts` (7 — persistence
+alongside stdout, redaction of the persisted row asserted byte-level, audit-write
+failure not breaking the audited operation), `audit-log-query.service.spec.ts`
+(6). The existing BUG-QA-003 tie-break tests pass with their assertions
+untouched.
+
+### Deferred
+
+- **Audit-log retention**: no policy added this pass — see `errorlog.md`.
+- **QA5B-OBS-2** (non-UUID `contentId` → 400): backend stays 400 by design;
+  the fix is frontend error mapping, carried to 5D.2. Rationale in `errorlog.md`.
+
 ## Phase 5B — Multi-platform frontend, ranking-v2 reasoning UI, exports (2026-07-19)
 
 Frontend-only pass against the frozen 5A contract. No backend file changed.

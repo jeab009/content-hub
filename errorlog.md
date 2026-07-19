@@ -91,12 +91,53 @@ Test failures / runtime errors found during build. Full root-cause detail lives 
 |---|---|---|---|---|
 | QC5B-M1 | Major | QC (static) | `COMMENT_PLATFORMS` ขยายเป็น 4 platform พร้อม comment อ้างว่า "every adapter now implements fetchComments" — **ผิด**. Backend `COMMENT_API_CAPABLE_PLATFORMS` ยังเป็น `[facebook, youtube]` ตั้งใจ; TikTok/LINE adapter reject `fetchComments` ตรงๆ (LINE broadcast ไม่มี thread). ผล: filter dropdown เสนอ tiktok/line ที่ได้ผลว่างเสมอ → สื่อผิดว่า "ไม่มี comment" แทน "ไม่รองรับ" | **Fixed** — revert เป็น `[facebook, youtube]` + เขียน comment ใหม่อธิบายว่าทำไมตั้งใจไม่ใส่ |
 | QA5B-OBS-1 | Low | QA | manual-external modal เข้าถึงได้จาก `/scheduler` เท่านั้น ไม่มีใน `/posts` — ดูตั้งใจ (posts เป็นหน้า log/report) แต่ควรยืนยัน product intent | Open — product question |
-| QA5B-OBS-2 | Low (cosmetic) | QA | contentId ที่ไม่ใช่ UUID บน revenue drill-down → backend 400 (ParseUUIDPipe) ไม่ใช่ 404 → frontend แสดง "Failed to load" แทน "does not exist". ไม่ crash, ไม่ค้าง spinner | Open — cosmetic |
+| QA5B-OBS-2 | Low (cosmetic) | QA | contentId ที่ไม่ใช่ UUID บน revenue drill-down → backend 400 (ParseUUIDPipe) ไม่ใช่ 404 → frontend แสดง "Failed to load" แทน "does not exist". ไม่ crash, ไม่ค้าง spinner | **Triaged 5D.1 — backend จะไม่แก้ โยนให้ 5D.2 (frontend)** ดูด้านล่าง |
+
+### QA5B-OBS-2 — disposition (decided Phase 5D.1, backend pass)
+
+**ตัดสิน: ไม่แก้ฝั่ง backend. 400 ถูกแล้ว. งานจริงอยู่ที่ frontend → ทำใน 5D.2**
+
+เหตุผล:
+
+1. **400 ถูกต้องตาม semantics** — `contentId` ที่ไม่ใช่ UUID คือ *คำขอผิดรูป* ไม่ใช่ *ทรัพยากรที่ไม่มีอยู่*. ระบบไม่เคยไป query DB เลยด้วยซ้ำ จึงไม่มีฐานอะไรจะบอกว่า "not found". 404 จะเป็นการโกหกว่าเราค้นแล้วไม่เจอ
+2. **ความสม่ำเสมอของ API สำคัญกว่าความสวยของ error เดียว** — `ParseUUIDPipe` คืน 400 บน **ทุก** route ที่รับ UUID (`contents/:id`, `comments/:id`, `posts/:id`, ranking, metrics). แก้เฉพาะ route นี้เป็น 404 = สร้างข้อยกเว้นที่ต้องจำ และทำให้ client เขียน error handling แบบ per-route
+3. **defect จริงคือ error mapping ฝั่ง frontend** — หน้า drill-down map ทุก non-2xx เป็น "Failed to load" ก้อนเดียว. ควรแยก 400/404 บน route นี้ให้ขึ้นข้อความว่า "ไม่พบ content นี้" (พร้อมลิงก์กลับ dashboard) ส่วน 5xx/network ค่อยเป็น "Failed to load"
+
+**ส่งต่อ 5D.2**: แก้ที่ `frontend/src/app/dashboard/revenue/[contentId]/page.tsx` (+ error mapping ใน `api-client`) — ไม่ต้องแตะ backend
 
 - **Phase 5B: QC REJECTED → แก้ → APPROVED + QA SIGNED OFF** (2026-07-19). frontend 44→78 tests.
 - QC verify: API contract ตรง backend เป๊ะทุกจุด (RecordManualExternal DTO, ReportQuery filters, revenue drilldown, v2 reasoning), manual-record modal **ไม่ส่ง server-computed field เลย** (wasOverride/recommendedPlatform/publishMethod/status), 401/403/429 แยก branch ถูก, `toAssetPlatform` เป็น map จริงครบ 4 platform (ปิด bug แฝง `line` vs `line_oa`), neutral-vs-computed-0.5 implement ถูก
 - QA verify (curl + source audit): wrong pw 401 (เก็บ field อื่นไว้), copyright 409 vs duplicate 409 **ข้อความต่างกันชัด**, override 201 + wasOverride server-computed, throttle 429, cadence 4 platform (TikTok 14/LINE 3), **เจอทั้ง neutral case จริง** (`below_min_sample_size`, sampleSize 0) **และ computed-0.5 จริง** (awayRate==towardRate==0.2778 ไม่ถูก label neutral) — ยืนยัน implement ถูก, CSV 3 ไฟล์ header ถูก + comment-summary aggregate-only + CSV injection defang, ไม่มี blank label
 - **ข้อจำกัดสำคัญ**: browser tools ไม่ available ทั้ง 4B และ 5B QA → **ยังไม่มีใครเห็น UI รันจริงด้วยตา** (pixel rendering, click-driven modal, browser console). verify ด้วย contract + source + toolchain แทน ซึ่งจับ logic bug ได้ดีแต่ไม่ครอบ visual/interaction layer
+
+## Phase 5D.1 Backend (2026-07-19) — BUG-P5-02 + durable audit trail
+
+| ID | Severity | Found by | Summary | Status |
+|---|---|---|---|---|
+| BUG-P5-02 | Medium | Bug Fixer (5 close-out) | `getLatestScores` รวม latest-per-platform โดยไม่กรอง engine → v2→v1 rollback ทิ้ง tiktok/line_oa (v2) ค้างใน recommendation set ถาวร เพราะ v1 ไม่เคยเขียน 2 platform นั้น → เทียบคะแนนข้าม engine ที่ weight คนละชุด | **Fixed 5D.1** — กรอง `engineVersion` ใน WHERE ทั้ง 2 read surface |
+| — | — | Bug Fixer (5 close-out §5.3) | audit log เขียน stdout อย่างเดียว ไม่มีตาราง → หายทุกครั้งที่ recreate container (พิสูจน์แล้ว: 8 manual_external posts, 0 audit line เหลือ) ทั้งที่ `bussiness_rule.md` อ้าง audit trail เป็นเหตุผล**เดียว**ของ copyright gate บน manual-external | **Fixed 5D.1** — ตาราง `audit_logs` + read endpoint |
+
+**Verify จริงบน live stack (ไม่ใช่ unit test อย่างเดียว):**
+
+- demo DB มี mixed rows จริงตาม close-out: `facebook 0.4822 (v1)`, `youtube 0.4583 (v1)`, `tiktok 0.4782 (v2)`, `line_oa 0.3823 (v2)`
+- `RANKING_ENGINE=v1` → `GET /api/contents/:id/scores` คืน **2 แถว v1 เท่านั้น** (4 factors), scheduler overview เห็นชุดเดียวกัน แนะนำ `facebook` — v2 rows **ยังอยู่บน disk ครบ** แค่ไม่ถูกอ่าน
+- flip `RANKING_ENGINE=v2` → คืน **4 แถว v2 เท่านั้น** (5 factors) แนะนำ `tiktok`; scheduler ตรงกันเป๊ะ
+- flip กลับ `v1` → ได้คำตอบเดิม byte-for-byte (`facebook 0.4822`, 4 factors). **คืนค่า default เป็น v1 แล้ว** — การเปิด v2 เป็นการตัดสินใจของ admin
+- audit row เขียนจริง, รอด `docker compose restart` + recreate หลายรอบ (แถว 19:13 ยังอยู่ ตอน container StartedAt 21:02)
+- ค้นทั้งตาราง: sentinel password `SuperSecretSentinel-*` → **0 แถว**; regex หา key sensitive ที่ไม่ถูก redact → **0 แถว**
+
+### Audit-log retention — DEFER อย่างเป็นทางการ (ไม่ใช่ลืม)
+
+**ตัดสิน: ยังไม่ตั้ง retention policy ให้ `audit_logs` ในรอบนี้ — ยกให้ admin ตัดสิน ก่อน production จริง**
+
+เหตุผล (ทำไมไม่ copy 12 เดือนของ comment มาใช้ให้ "consistent"):
+
+1. **ตัวขับเคลื่อนคนละตัว** — comment retention 12 เดือนมีเพราะ comment เก็บ PII ดิบ (author, text) ตาม PDPA. audit row **ไม่เก็บ PII ดิบเลยโดยโครงสร้าง**: `meta` ผ่าน `redactSensitive()` ก่อนเขียนเสมอ และ row ที่เกี่ยวกับ comment พก `authorRef` (hash) + count เท่านั้น เหตุผลที่บังคับ 12 เดือนกับ comment จึงไม่ได้บังคับกับ audit ด้วยน้ำหนักเดียวกัน
+2. **audit trail มีข้อกำหนดสวนทาง** — มันมีไว้เพื่อ *พิสูจน์ว่าเกิดอะไรขึ้น*. policy ที่ลบทิ้งขัดกับเหตุผล legal-risk ใน `bussiness_rule.md` ตรงๆ: ลบ audit row ทิ้งที่ 12 เดือน = ทำลายหลักฐานว่า copyright gate ถูกบังคับใช้ ซึ่งเป็นสิ่งเดียวที่ gate นั้นมีไว้สร้าง
+3. **ระยะเวลาที่ถูกต้องเป็นคำถาม legal/business ไม่ใช่ default ของ developer** — "ต้องพิสูจน์ copyright clearance ย้อนหลังได้กี่ปี" ต้องมีคนตอบ. เดา 12 เดือนเพื่อให้ดู consistent = false consistency
+4. **ยังไม่มีแรงกดดันด้าน volume** — 1 row ต่อ 1 admin action; ตอนนี้ทั้งตารางมี 4 แถว. ไม่มีเหตุผลเชิงเทคนิคที่ต้องรีบ
+
+**สิ่งที่ต้องบอกตรงๆ (เจอตอนทำ):** `auth.login.failure` เก็บ *email ที่ผู้ใช้พิมพ์เข้ามา* ไว้ในคอลัมน์ `actor` (ดู `auth.service.ts` — เจตนาเดิมคือสืบสวน brute-force). ถ้ามีคนพิมพ์ email ส่วนตัวผิดช่อง email นั้นจะถูกเก็บถาวร **นี่คือ personal data เพียงจุดเดียวในตารางนี้** และเป็นเหตุผลที่หนักที่สุดข้อเดียวที่สนับสนุนให้มี retention จริง — ยกให้ System Analyst ตัดสินคู่กับข้อ 2
 
 ## Carry-forward to Phase 2 kickoff (from Bug Fixer close-out, 2026-07-16)
 
