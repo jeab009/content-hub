@@ -1,0 +1,275 @@
+# Setup Checklist — สิ่งที่ต้องดำเนินการเอง
+
+สิ่งที่ **ระบบทำแทนไม่ได้** — ต้องมีคนไปสมัคร กรอก หรือตัดสินใจ
+
+สถานะปัจจุบัน: demo/local บน Docker Compose ทำงานครบทุก feature แต่ **ค่าทั้งหมดเป็นค่า demo** และ **ยังไม่เคยชี้ไปที่ platform จริง**
+
+เรียงตามลำดับที่ควรทำ — แต่ละหัวข้อบอกว่า *ทำไมต้องทำ* และ *ถ้าไม่ทำจะเกิดอะไร*
+
+---
+
+## ส่วนที่ 0 — ตรวจสถานะปัจจุบันก่อน (5 นาที)
+
+```bash
+cd /Users/uthorn.y/Desktop/Content/content-hub
+docker compose ps                    # ควรเห็น 4 service เป็น healthy
+docker compose exec backend npx prisma migrate status   # ควรขึ้น "up to date"
+```
+
+เข้า http://localhost:3000 → login ด้วย `admin@example.com` / ค่าใน `backend/.env` (`SEED_ADMIN_PASSWORD`)
+
+- [ ] เข้าระบบได้ เห็นหน้า Dashboard
+
+---
+
+## ส่วนที่ 1 — Secrets (บังคับ ก่อนใช้จริงทุกกรณี)
+
+ตอนนี้เป็นค่า placeholder ทั้งหมด ใครก็ตามที่เห็น repo นี้จะ forge session cookie และถอดรหัส token ได้
+
+### 1.1 สร้าง SESSION_SECRET
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+- [ ] ใส่ค่าที่ได้ลง `SESSION_SECRET` (ทั้ง `backend/.env` และ `.env` ที่ root ถ้าใช้ Docker)
+
+### 1.2 สร้าง APP_ENCRYPTION_KEY
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+- [ ] ใส่ค่าที่ได้ลง `APP_ENCRYPTION_KEY`
+
+> ⚠️ **คำเตือนสำคัญ** — key นี้ใช้เข้ารหัส access token ของทุก platform
+> **เปลี่ยน key = token เดิมถอดรหัสไม่ได้ทั้งหมด** ต้อง disconnect แล้ว connect ใหม่ทุกบัญชี
+> เรื่องนี้เกิดขึ้นจริงในช่วง demo 2 ครั้ง (ดู `errorlog.md` P2-OBS-1, P3-OBS-1)
+> ถ้าสงสัยว่า key รั่ว → มี runbook ใน `docs/security-decisions.md` §10
+
+### 1.3 ตั้งรหัส admin
+
+seed script บังคับ: **ยาว ≥ 12 ตัวอักษร** และ **zxcvbn score ≥ 3/4** (รหัสเดาง่ายจะถูกปฏิเสธตั้งแต่ตอน seed)
+
+- [ ] ตั้ง `SEED_ADMIN_PASSWORD` ใน `.env` (root — ตัวที่ docker-compose อ่าน) **และ** `backend/.env`
+
+> ถ้าปล่อยว่าง seed จะสุ่มรหัสให้แล้ว **print ครั้งเดียว** ใน log ตอน boot แรก
+> ระหว่าง demo รหัสนี้หายไป 2 ครั้งเพราะ log ถูก rotate — ตั้งเองดีกว่า
+>
+> ⚠️ `.env` (root) กับ `backend/.env` เป็นคนละไฟล์ **container อ่านเฉพาะ root** — ค่าต้องตรงกัน ไม่งั้น fresh volume จะได้รหัสคนละตัวกับที่คิดไว้
+
+### 1.4 เปลี่ยน Postgres credentials
+
+- [ ] เปลี่ยน `POSTGRES_PASSWORD` จาก `content_hub` เป็นค่าจริง
+- [ ] แก้ `DATABASE_URL` ให้ตรงกัน
+
+---
+
+## ส่วนที่ 2 — Facebook / Meta
+
+จำเป็นถ้าจะโพสต์ FB จริง (ตอนนี้ `PUBLISHER_IMPL_FACEBOOK=mock` — โพสต์ปลอม ไม่ออกไปข้างนอก)
+
+### 2.1 สร้าง Meta App
+
+1. ไป https://developers.facebook.com/apps → **Create App**
+2. เลือกประเภท **Business**
+3. เพิ่ม product **Facebook Login**
+
+- [ ] ได้ App ID + App Secret แล้ว
+
+### 2.2 ลงทะเบียน Redirect URI
+
+ใน Meta App Dashboard → Facebook Login → Settings → **Valid OAuth Redirect URIs**
+
+ต้องตรง**เป๊ะทุกตัวอักษร**กับค่าใน `.env`:
+```
+http://localhost:4000/api/connected-accounts/facebook/callback     # local
+https://<domain-จริง>/api/connected-accounts/facebook/callback     # production
+```
+
+- [ ] ลงทะเบียน URI ครบทุก environment ที่จะใช้
+
+### 2.3 ใส่ค่าลง .env
+
+```bash
+FACEBOOK_APP_ID=<app id จริง>
+FACEBOOK_APP_SECRET=<app secret จริง>
+FACEBOOK_REDIRECT_URI=<ต้องตรงกับที่ลงทะเบียนไว้ข้อ 2.2>
+```
+
+- [ ] ใส่ครบ 3 ค่า
+
+### 2.4 กรอกเอกสาร Meta
+
+เปิด [`docs/meta-app-review-status.md`](docs/meta-app-review-status.md) — ยังว่าง 5 ช่อง:
+
+- [ ] Meta App ID จริง
+- [ ] Business Manager ที่เป็นเจ้าของ Page
+- [ ] Redirect URI ที่ลงทะเบียนไว้จริง
+- [ ] Data Use Checkup — สถานะ + **วันครบกำหนดต่ออายุ** (Meta บังคับ re-attest เป็นระยะ ถ้าไม่ทำ OAuth จะพัง)
+- [ ] ผู้รับผิดชอบ (ใครแก้เวลา OAuth ล่มตอนตี 3)
+
+> **ไม่ต้องส่ง App Review** — ตัดสินใจไว้แล้วว่า connect เฉพาะ Page ของตัวเอง จึงอยู่ใน branch "Dev Mode sufficient"
+> **ต้องกลับมาทบทวนทันที** ถ้าวันหนึ่งต้อง connect Page ของคนอื่น — ตอนนั้นต้องส่ง App Review ก่อน ใช้เวลาเป็นสัปดาห์
+
+### 2.5 เปิดใช้จริง
+
+- [ ] เปลี่ยน `PUBLISHER_IMPL_FACEBOOK=mock` → `facebook`
+
+> ระบบมี guard: ถ้าตั้งค่า live ขณะ `NODE_ENV≠production` **จะปฏิเสธ boot ทันที** พร้อมข้อความอธิบาย (กันโพสต์จริงหลุดออกไปตอนเทส) — ไม่ใช่ bug
+
+---
+
+## ส่วนที่ 3 — YouTube / Google
+
+ตอนนี้ `GOOGLE_CLIENT_ID` และ `GOOGLE_CLIENT_SECRET` **ว่างเปล่า** — ปุ่ม connect YouTube จะใช้ไม่ได้เลย
+
+### 3.1 สร้าง Google Cloud project
+
+1. https://console.cloud.google.com → สร้าง project
+2. **APIs & Services → Library** → เปิดใช้ **YouTube Data API v3**
+3. **OAuth consent screen** → ตั้งค่า (External ถ้าไม่ได้ใช้ Google Workspace)
+4. **Credentials → Create Credentials → OAuth client ID → Web application**
+
+- [ ] ได้ Client ID + Client Secret
+
+### 3.2 ลงทะเบียน Redirect URI
+
+**Authorized redirect URIs** ต้องมี:
+```
+http://localhost:4000/api/connected-accounts/google/callback
+https://<domain-จริง>/api/connected-accounts/google/callback
+```
+
+- [ ] ลงทะเบียนครบ
+
+### 3.3 ใส่ค่าลง .env
+
+```bash
+GOOGLE_CLIENT_ID=<client id>
+GOOGLE_CLIENT_SECRET=<client secret>
+```
+
+scope ที่ระบบขอ (ตั้งไว้แล้ว ไม่ต้องแก้):
+`youtube.upload` + `youtube.readonly`
+
+- [ ] ใส่ครบ
+
+### 3.4 เปิดใช้จริง
+
+- [ ] เปลี่ยน `PUBLISHER_IMPL_YOUTUBE=mock` → `youtube`
+
+> ⚠️ YouTube live path **ยังไม่เคยรันกับ credential จริง** เขียนตาม API spec แต่ไม่มีใครทดสอบได้เพราะไม่มี key
+> ครั้งแรกที่เปิดใช้ **ให้ทดสอบกับ channel ทดสอบก่อน** อย่าเพิ่งใช้ channel หลัก
+
+---
+
+## ส่วนที่ 4 — TikTok / LINE OA
+
+**ไม่ต้องทำอะไร** — ตัดสินใจไว้แล้ว (ดู `bussiness_rule.md`)
+
+วิธีใช้งานจริง:
+1. โพสต์เองบน TikTok / LINE OA ตามปกติ
+2. เข้า Content Hub → หน้า **Scheduler** → กด **"Record external…"**
+3. กรอก post ID / URL + รหัสผ่าน
+4. โพสต์นั้นกลายเป็น tracked post — นับ cadence, แนบ metric, เข้า ranking ได้
+
+- [ ] อ่านเข้าใจว่าสองช่องทางนี้เป็น manual (ไม่ใช่ bug)
+
+> ต้องผ่าน copyright gate เหมือนกัน (ยืนยันไว้แล้ว) — ถ้าไม่บังคับ "โพสต์เองแล้วมาบันทึกทีหลัง" จะกลายเป็นช่องหลบ gate ทั้งหมด
+
+---
+
+## ส่วนที่ 5 — Production infrastructure (ยังไม่มีเลยสักอย่าง)
+
+ตอนนี้คือ Docker Compose บนเครื่องเดียว
+
+### 5.1 HTTPS (บังคับ)
+
+- [ ] ตั้ง `NODE_ENV=production`
+- [ ] วาง reverse proxy / load balancer ที่ terminate TLS
+
+> `NODE_ENV=production` เปิด flag `Secure` บน session cookie → **ถ้าไม่มี HTTPS จะ login ไม่ได้เลย** (cookie ไม่ถูกส่ง)
+
+### 5.2 Domain + CORS
+
+- [ ] ตั้ง `CORS_ORIGIN=https://<domain-จริง>`
+- [ ] build frontend ใหม่ด้วย `NEXT_PUBLIC_API_BASE_URL=https://<api-domain>`
+
+> ⚠️ `NEXT_PUBLIC_*` ของ Next.js เป็น **build-time** ไม่ใช่ runtime — เปลี่ยน env เฉยๆ ไม่พอ **ต้อง rebuild image**
+
+### 5.3 Database backup
+
+- [ ] ตั้ง backup อัตโนมัติของ Postgres
+- [ ] **ทดสอบ restore จริง** อย่างน้อย 1 ครั้ง (backup ที่ restore ไม่ได้ = ไม่มี backup)
+
+### 5.4 CI
+
+- [ ] สร้าง git remote (GitHub) แล้ว push
+
+> `.github/workflows/ci.yml` เขียนไว้เรียบร้อย spin up Postgres + Redis จริง รัน lint/typecheck/test/build ทั้งสอง app
+> แต่ **ไม่เคยรันบน GitHub Actions จริงสักครั้ง** เพราะยังไม่มี remote
+
+### 5.5 Monitoring
+
+- [ ] ติดตั้ง error tracking (Sentry) + metrics (Prometheus/Grafana)
+- [ ] หลังมี monitoring แล้ว → ลด log level ของ 401 ที่เป็นเรื่องปกติ จาก ERROR เป็น WARN (ไม่งั้น alert จะดังตลอด)
+
+---
+
+## ส่วนที่ 6 — ตัดสินใจเชิงนโยบาย
+
+### 6.1 Audit retention
+
+ตาราง `audit_logs` เก็บถาวร ไม่มีนโยบายลบ
+
+**ประเด็น**: `auth.login.failure` เก็บ **email ที่พยายาม login** ไว้ในคอลัมน์ `actor` — เป็นข้อมูลส่วนบุคคลชิ้นเดียวในตารางนี้
+
+- [ ] ตัดสินใจว่าจะเก็บนานเท่าไหร่ (คำแนะนำ: 12 เดือน ให้ตรงกับ comment retention)
+
+> เก็บไว้นาน = หลักฐานทางกฎหมายดี แต่ PDPA exposure สูงขึ้น — ต้องชั่งเอง
+
+### 6.2 Sentiment model
+
+ตอนนี้ `SENTIMENT_IMPL=rule_based` — ทำงานในเครื่อง **ไม่มีข้อมูลออกไปข้างนอก**
+
+ถ้าจะเปลี่ยนเป็น `model` ที่เรียก vendor ภายนอก:
+- [ ] ทำ DPA (Data Processing Agreement) กับ vendor ก่อน
+- [ ] ตัด author/identifier ออกก่อนส่ง — ส่งแค่ข้อความ
+- [ ] ตรวจว่า vendor อยู่ประเทศไหน (PDPA cross-border transfer)
+
+### 6.3 Ads/Paid
+
+ตัดสินใจไว้: ใช้ Meta Ads Manager / TikTok Ads โดยตรงไปก่อน
+
+- [ ] **จดบันทึกทุกครั้งที่ยิง ads ด้วยมือ**: content ไหน / platform / budget / ผลลัพธ์
+- [ ] หลังใช้งานจริง ~8 สัปดาห์ → กลับมาทบทวนว่าคุ้มสร้างเข้าระบบไหม
+
+> เงื่อนไขเดิมคือ "เก็บ requirement ระหว่าง Phase 2-5" แต่ build เร็วกว่าปฏิทิน (~3 วัน) จึงยังไม่มีข้อมูลจริงเลย — ต้องผูกกับ**การใช้งานจริง** ไม่ใช่ phase
+
+---
+
+## ลำดับที่แนะนำ
+
+**ถ้าจะใช้ต่อในเครื่องตัวเอง (ไม่เปิดสาธารณะ):**
+→ ทำแค่ ส่วนที่ 1 (secrets) + 2 (Facebook) พอ
+
+**ถ้าจะขึ้น production จริง:**
+→ 1 → 2 → 3 → 5.1 → 5.2 → 5.3 → 5.4 → 5.5 → 6
+
+**ทดสอบก่อนของจริงเสมอ:**
+1. เปิด live ทีละ platform อย่าเปิดพร้อมกัน
+2. ใช้ Page / channel ทดสอบก่อน
+3. ดู audit log ว่าบันทึกครบ (`GET /api/audit-logs`)
+4. ค่อยเปลี่ยนไปใช้ของจริง
+
+---
+
+## สิ่งที่ไม่ต้องทำ (ทำเสร็จแล้ว)
+
+- ✅ Database schema + migrations (9 migrations)
+- ✅ Ranking engine v2 (เปิดใช้แล้ว)
+- ✅ Audit trail ลง DB (รอด restart)
+- ✅ Copyright gate, PDPA controls, CSV export
+- ✅ 401 backend tests + 92 frontend tests
+- ✅ Visual QA ครบทุกหน้า

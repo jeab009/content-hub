@@ -53,5 +53,7 @@
 
 ## Reference files
 
+- [SETUP-CHECKLIST.md](SETUP-CHECKLIST.md) — สิ่งที่ต้อง setup เอง (secrets, Meta/Google credentials, production infra, นโยบาย) พร้อมขั้นตอนละเอียด
+
 - [errorlog.md](errorlog.md) — test failures/error ที่เจอระหว่าง build
 - [bussiness_rule.md](bussiness_rule.md) — business rule ที่ confirm แล้ว (แยกจาก design/tech detail)
