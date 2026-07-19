@@ -3,8 +3,11 @@ import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditAction, AuditLogService } from '../../common/audit/audit-log.service';
 
-const GENERIC_STEP_UP_ERROR =
-  'Publish confirmation requires your password (step-up re-auth failed)';
+// Action-neutral on purpose: this service now gates publish confirm, comment
+// reply, and retention purge — the message must not name any one action
+// (BUG-QA-4B-01: an admin replying to a comment was told "Publish confirmation
+// requires your password", a copy bleed from the publish origin).
+const GENERIC_STEP_UP_ERROR = 'This action requires your password (step-up re-auth failed)';
 
 /**
  * Step-up re-authentication for publish confirmation (System Analyst hard

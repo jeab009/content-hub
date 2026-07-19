@@ -64,6 +64,15 @@ Test failures / runtime errors found during build. Full root-cause detail lives 
 - **Phase 3B frontend**: jest 24/24, lint+typecheck clean, `next build` ผ่าน. Verified browser: dashboard render (KPI/trend/tables), Sync button, manual metric modal (201) → dashboard reflects latest-per-post. ไม่มี console error
 - **Append-only invariant** ยืนยัน live: post เดียวมี 3 metric rows (2 manual + 1 api) เก็บครบ, dashboard total ใช้ row ล่าสุด (ไม่ sum ทับ)
 
+## Phase 4B Frontend — /comments inbox (2026-07-19)
+
+| ID | Severity | Found by | Summary | Status |
+|---|---|---|---|---|
+| BUG-QA-4B-01 | Low (copy) | QA | Step-up 401 message hardcoded "Publish confirmation requires your password" — shown on comment-reply + retention-purge too (copy bleed from shared `StepUpAuthService`). Functionally correct, misleading text. | **Fixed** — message now action-neutral "This action requires your password (step-up re-auth failed)". Backend rebuilt, 285 tests still green. |
+
+- **Phase 4B: QC APPROVED WITH CONDITIONS + QA CONDITIONAL** (2026-07-19). QC static: zero critical/major, API-contract fidelity all 7 methods exact, security/XSS/CSRF/React patterns clean, 3 UX-minor non-blocking (template select reset, erase last-page edge, explicit pageSize). QA: browser MCP tools not granted to the agent → did curl vs live stack + real jest (frontend 20/20 + backend comment 35/35) + source audit; all API contract/throttle/guards/escalation-dedup/erasure/filters clean; DOM-visual slice not driven (covered by QC static + the 4B dev's own in-browser verification). Only bug = BUG-QA-4B-01 (fixed).
+- **Phase 4 now closed end-to-end for the admin** (exit criteria 3 + UI halves of 4/6/8 met). QC 3 UX-minors carried forward (non-blocking).
+
 ## Carry-forward to Phase 2 kickoff (from Bug Fixer close-out, 2026-07-16)
 
 - QC review + QA baseline ของ Phase 2 WIP commits ก่อนเขียนโค้ดใหม่ — migration `20260716054701_phase2_publish_cms_ranking` ถูก apply ใน demo DB แล้ว ต้อง treat schema เป็น already-live
