@@ -61,6 +61,14 @@ Confirmed business rules only (not tech/design detail — see `makedown.md` for 
 - เก็บ requirement จากการใช้งานจริงระหว่าง Phase 2-5 → **ตัดสินใหม่ตอน Phase 5 จบ** ว่าคุ้มสร้างเป็น Phase 7 หรือไม่ (ดู pros/cons ใน suggestion.md)
 - ผลพวง: Meta App อยู่ branch Dev Mode ต่อได้ (ไม่ต้องขอ ads_management scope), `metric` table ไม่ต้อง split organic/paid ตอนนี้, ranking engine v1/v2 ใช้ organic signal เท่านั้นตามแผนเดิม
 
+## Ranking Engine v2 (enabled 2026-07-20)
+
+- **v2 เป็น engine เริ่มต้นแล้ว** (`RANKING_ENGINE` default = `v2`). ยืนยันโดย admin ตอนปิด Phase 5D หลัง BUG-P5-02 ถูกแก้ (score reads แยกตาม engine แล้ว) และ 5-factor panel ผ่าน visual QA
+- v2 ต่างจาก v1: ให้คะแนนครบ 4 platform (v1 ให้แค่ FB/YT), engagement factor ผสม revenue เข้าไปด้วย, และเพิ่ม factor `override_feedback` ที่เรียนจากประวัติ override จริงของ admin
+- **v2 เปลี่ยนคำแนะนำจริง** — comedy pillar พลิกจาก Facebook เป็น TikTok เพราะ override history. นี่คือ factor ทำงานตามที่ออกแบบ ไม่ใช่ bug
+- **Rollback**: ตั้ง `RANKING_ENGINE=v1` — reads แยก engine ทั้งสองทาง ดังนั้น rollback จะ**ไม่สนใจ**แถว v2 (ไม่ผสมกัน) แต่ต้อง re-rank content ที่ต้องการคะแนน v1 ใหม่
+- **ทุกครั้งที่สลับ engine ต้อง re-rank** — content ที่ไม่เคยถูก rank ด้วย engine ปัจจุบันจะอ่านเป็น unranked (ตั้งใจ — ปลอดภัยกว่าเสิร์ฟคะแนนข้าม engine)
+
 ## Scope Boundary (rules ว่า "ไม่ทำ" ในแต่ละ phase)
 
 - Phase 1: ไม่มี CMS, ranking, dashboard UI, publish logic, platform อื่นนอก Facebook

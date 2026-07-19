@@ -67,7 +67,7 @@ export const envValidationSchema = Joi.object({
 
   // Phase 5 ranking engine selector — MUST default to 'v1' so an existing
   // .env keeps today's behavior. Flipped to 'v2' only after QA verifies it.
-  RANKING_ENGINE: Joi.string().valid('v1', 'v2').default('v1'),
+  RANKING_ENGINE: Joi.string().valid('v1', 'v2').default('v2'),
 
   // Phase 4 sentiment classifier gate — MUST default to 'rule_based'. The
   // self-hosted model ('model') is a flagged 4C tail, shipped disabled.

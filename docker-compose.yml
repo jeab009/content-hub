@@ -87,7 +87,7 @@ services:
       PUBLISHER_IMPL_TIKTOK: ${PUBLISHER_IMPL_TIKTOK:-mock}
       PUBLISHER_IMPL_LINE: ${PUBLISHER_IMPL_LINE:-mock}
       # Ranking engine selector: v1 (frozen, FB/YT) | v2 (5 factors, 4 platforms).
-      RANKING_ENGINE: ${RANKING_ENGINE:-v1}
+      RANKING_ENGINE: ${RANKING_ENGINE:-v2}
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@example.com}
       SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-Content Hub Admin}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}

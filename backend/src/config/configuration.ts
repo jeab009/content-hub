@@ -143,9 +143,13 @@ export default (): { app: AppConfig } => ({
     },
     ranking: {
       weightsPath: process.env.RANKING_WEIGHTS_PATH ?? './config/ranking-weights.yaml',
-      // MUST default to 'v1' — an existing .env with no RANKING_ENGINE keeps
-      // today's exact ranking behavior.
-      engine: (process.env.RANKING_ENGINE ?? 'v1') as 'v1' | 'v2',
+      // Defaults to 'v2' since 2026-07-20 (admin decision at the Phase 5D
+      // close-out). v2 shipped disabled through Phase 5A/5B while BUG-P5-02
+      // let v1 and v2 score rows mix in one recommendation; 5D.1 made score
+      // reads engine-scoped, which was the gate on enabling it. Set
+      // RANKING_ENGINE=v1 to roll back — reads are engine-scoped both ways, so
+      // a rollback ignores v2 rows rather than blending them.
+      engine: (process.env.RANKING_ENGINE ?? 'v2') as 'v1' | 'v2',
     },
     sentiment: {
       // MUST default to 'rule_based' — the self-hosted model (4C) is a flagged
