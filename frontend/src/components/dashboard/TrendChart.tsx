@@ -2,14 +2,20 @@
 
 import type { TrendPoint } from '@/lib/api-client';
 import { formatTHB } from '@/lib/content-labels';
+import {
+  AXIS_FONT_SIZE,
+  CHART_HEIGHT as HEIGHT,
+  CHART_WIDTH as WIDTH,
+  Y_LABEL_GAP,
+  computeChartPadding,
+} from '@/lib/trend-chart-layout';
 
 interface TrendChartProps {
   points: TrendPoint[];
 }
 
-const WIDTH = 640;
-const HEIGHT = 200;
-const PADDING = { top: 12, right: 12, bottom: 24, left: 48 };
+/** Fractions of max revenue that get a gridline + y-axis label. */
+const Y_AXIS_FRACTIONS = [0, 0.5, 1] as const;
 
 /**
  * Dependency-free SVG line chart of cumulative revenue over time (no chart
@@ -22,10 +28,16 @@ export function TrendChart({ points }: TrendChartProps): JSX.Element {
     return <p className="text-muted mb-0">No trend data yet — sync or add metrics first.</p>;
   }
 
-  const plotW = WIDTH - PADDING.left - PADDING.right;
-  const plotH = HEIGHT - PADDING.top - PADDING.bottom;
   const maxRevenue = Math.max(...points.map((p) => p.revenue), 1);
   const n = points.length;
+
+  // Padding is derived from the labels actually being drawn, so a large
+  // revenue figure widens the axis gutter instead of being clipped (BUG-P5-01).
+  const yAxisLabels = Y_AXIS_FRACTIONS.map((frac) => formatTHB(maxRevenue * frac));
+  const PADDING = computeChartPadding(yAxisLabels, points[n - 1].date.slice(5));
+
+  const plotW = WIDTH - PADDING.left - PADDING.right;
+  const plotH = HEIGHT - PADDING.top - PADDING.bottom;
 
   const x = (i: number): number =>
     PADDING.left + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);
@@ -45,7 +57,7 @@ export function TrendChart({ points }: TrendChartProps): JSX.Element {
         style={{ width: '100%', height: 'auto' }}
       >
         {/* y-axis gridlines + labels at 0, 50%, 100% of max */}
-        {[0, 0.5, 1].map((frac) => {
+        {Y_AXIS_FRACTIONS.map((frac, i) => {
           const gy = PADDING.top + plotH - frac * plotH;
           return (
             <g key={frac}>
@@ -57,8 +69,14 @@ export function TrendChart({ points }: TrendChartProps): JSX.Element {
                 stroke="currentColor"
                 strokeOpacity={0.15}
               />
-              <text x={PADDING.left - 6} y={gy + 4} textAnchor="end" fontSize={11} fill="currentColor">
-                {formatTHB(maxRevenue * frac)}
+              <text
+                x={PADDING.left - Y_LABEL_GAP}
+                y={gy + 4}
+                textAnchor="end"
+                fontSize={AXIS_FONT_SIZE}
+                fill="currentColor"
+              >
+                {yAxisLabels[i]}
               </text>
             </g>
           );
@@ -77,7 +95,7 @@ export function TrendChart({ points }: TrendChartProps): JSX.Element {
                 x={x(i)}
                 y={HEIGHT - 6}
                 textAnchor="middle"
-                fontSize={11}
+                fontSize={AXIS_FONT_SIZE}
                 fill="currentColor"
               >
                 {p.date.slice(5)}
