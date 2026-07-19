@@ -11,8 +11,14 @@ import {
 } from './platform-adapter.interface';
 import { FacebookAdapter } from './facebook.adapter';
 import { YouTubeAdapter } from './youtube.adapter';
+import { TikTokAdapter } from './tiktok.adapter';
+import { LineAdapter } from './line.adapter';
 import { PlatformAdapterRegistry } from './platform-adapter.registry';
-import { PublisherTokenError, PublisherValidationError } from './publisher.errors';
+import {
+  PlatformCapabilityNotImplementedError,
+  PublisherTokenError,
+  PublisherValidationError,
+} from './publisher.errors';
 
 /**
  * Shared contract spec, run against every adapter in dry-run (mock) mode —
@@ -23,6 +29,8 @@ const dryRunAppConfig = {
   publisher: {
     facebookImpl: 'mock',
     youtubeImpl: 'mock',
+    tiktokImpl: 'mock',
+    lineImpl: 'mock',
     mockLatencyMs: 0,
     mockFailureRate: 0,
   },
@@ -70,6 +78,16 @@ const adapterCases: AdapterCase[] = [
     name: 'YouTubeAdapter',
     platform: AssetPlatform.youtube,
     build: () => new YouTubeAdapter(configService),
+  },
+  {
+    name: 'TikTokAdapter',
+    platform: AssetPlatform.tiktok,
+    build: () => new TikTokAdapter(configService),
+  },
+  {
+    name: 'LineAdapter',
+    platform: AssetPlatform.line_oa,
+    build: () => new LineAdapter(configService),
   },
 ];
 
@@ -201,20 +219,110 @@ describe.each(adapterCases)('PlatformAdapter contract — $name (dry-run)', ({ p
   });
 });
 
-describe('PlatformAdapterRegistry — TikTok / LINE OA stay unimplemented (Phase 5)', () => {
+// Phase 5 retargets (rather than deletes) the old "TikTok/LINE stay
+// unimplemented" block: the coverage that mattered was "the registry maps
+// exactly the platforms it claims to", which is still worth asserting now that
+// the expected answer flipped. Risk R6.
+describe('PlatformAdapterRegistry — all four platforms resolve (Phase 5)', () => {
   const registry = new PlatformAdapterRegistry(
     new FacebookAdapter(configService),
     new YouTubeAdapter(configService),
+    new TikTokAdapter(configService),
+    new LineAdapter(configService),
   );
 
-  it('serves FB + YouTube adapters', () => {
+  it('serves an adapter for every AssetPlatform value', () => {
     expect(registry.getFor(AssetPlatform.facebook)).toBeInstanceOf(FacebookAdapter);
     expect(registry.getFor(AssetPlatform.youtube)).toBeInstanceOf(YouTubeAdapter);
+    expect(registry.getFor(AssetPlatform.tiktok)).toBeInstanceOf(TikTokAdapter);
+    expect(registry.getFor(AssetPlatform.line_oa)).toBeInstanceOf(LineAdapter);
+
+    for (const platform of Object.values(AssetPlatform)) {
+      expect(registry.supports(platform)).toBe(true);
+    }
   });
 
-  it('rejects TikTok and LINE OA — no adapter for any capability yet', () => {
-    expect(() => registry.getFor(AssetPlatform.tiktok)).toThrow(BadRequestException);
-    expect(() => registry.getFor(AssetPlatform.line_oa)).toThrow(BadRequestException);
+  it('still rejects a genuinely unknown platform value', () => {
+    const notAPlatform = 'myspace' as AssetPlatform;
+
+    expect(registry.supports(notAPlatform)).toBe(false);
+    expect(() => registry.getFor(notAPlatform)).toThrow(BadRequestException);
+  });
+});
+
+describe('TikTok / LINE OA adapters — live paths are unverified stubs', () => {
+  /**
+   * These two ship registered and mock-default, but NOTHING here has ever run
+   * against a real API. The point of these assertions is that enabling the
+   * live flag fails CLEANLY and pre-dispatch (PublisherValidationError maps to
+   * post status `failed` = "confirmed nothing was created"), never leaving a
+   * post stranded in posted_unconfirmed.
+   */
+  const liveConfig = {
+    get: jest.fn().mockReturnValue({
+      ...dryRunAppConfig,
+      publisher: { ...dryRunAppConfig.publisher, tiktokImpl: 'tiktok', lineImpl: 'line' },
+    }),
+  } as unknown as ConfigService;
+
+  const liveCases = [
+    { name: 'TikTokAdapter', build: () => new TikTokAdapter(liveConfig) },
+    { name: 'LineAdapter', build: () => new LineAdapter(liveConfig) },
+  ];
+
+  it.each(liveCases)(
+    '$name rejects live publish pre-dispatch with no network I/O',
+    async ({ build }) => {
+      const fetchSpy = jest.spyOn(globalThis, 'fetch');
+      try {
+        await expect(build().publish(buildArgs())).rejects.toThrow(PublisherValidationError);
+        expect(fetchSpy).not.toHaveBeenCalled();
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    },
+  );
+
+  it.each(liveCases)(
+    '$name reports metrics/comments/reply as not implemented',
+    async ({ build }) => {
+      const adapter = build();
+      const base = {
+        post: { id: 'post-1' } as Post,
+        account: { id: 'acct-1' } as ConnectedAccount,
+        accessToken: 'decrypted-token',
+      };
+
+      await expect(adapter.fetchMetrics(base)).rejects.toThrow(
+        PlatformCapabilityNotImplementedError,
+      );
+      await expect(adapter.fetchComments(base)).rejects.toThrow(
+        PlatformCapabilityNotImplementedError,
+      );
+      await expect(
+        adapter.replyComment({ ...base, externalCommentId: 'c-1', message: 'hi' }),
+      ).rejects.toThrow(PlatformCapabilityNotImplementedError);
+    },
+  );
+});
+
+describe('TikTokAdapter platform-specific validation', () => {
+  it('rejects non-video content pre-dispatch, dry-run included', async () => {
+    const adapter = new TikTokAdapter(configService);
+    const args = buildArgs();
+    args.content = { ...args.content, type: ContentType.image } as Content;
+
+    await expect(adapter.publish(args)).rejects.toThrow(PublisherValidationError);
+  });
+});
+
+describe('LineAdapter platform-specific validation', () => {
+  it('rejects content with no caption — a broadcast needs a message body', async () => {
+    const adapter = new LineAdapter(configService);
+    const args = buildArgs();
+    args.content = { ...args.content, caption: '   ' } as Content;
+
+    await expect(adapter.publish(args)).rejects.toThrow(PublisherValidationError);
   });
 });
 

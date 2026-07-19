@@ -23,6 +23,7 @@ import { CreatePostDto } from './dto/create-post.dto';
 import { PublishRetryDto } from './dto/publish-retry.dto';
 import { ResolvePostedDto } from './dto/resolve-posted.dto';
 import { ListPostsQueryDto } from './dto/list-posts-query.dto';
+import { RecordManualExternalDto } from './dto/record-manual-external.dto';
 import { PostResponseDto } from './dto/post-response.dto';
 
 /**
@@ -57,6 +58,26 @@ export class PostsController {
     @Req() request: Request,
   ): Promise<PostResponseDto> {
     const post = await this.orchestrator.createAndDispatch(dto, userId, request.ip);
+    return PostResponseDto.fromEntity(post);
+  }
+
+  /**
+   * Record a post the admin already published natively on the platform (the
+   * delivered TikTok/LINE OA path). Carries a password, so it gets the same
+   * strict rate limit as the dispatch routes.
+   *
+   * Route is a fixed segment, so it can never collide with `:id/...` routes.
+   */
+  @Post('manual-external')
+  @UseGuards(CsrfGuard, ThrottlerGuard)
+  @Throttle(STEP_UP_RATE_LIMIT)
+  @HttpCode(HttpStatus.CREATED)
+  async recordManualExternal(
+    @Body() dto: RecordManualExternalDto,
+    @CurrentUserId() userId: string,
+    @Req() request: Request,
+  ): Promise<PostResponseDto> {
+    const post = await this.orchestrator.recordManualExternal(dto, userId, request.ip);
     return PostResponseDto.fromEntity(post);
   }
 

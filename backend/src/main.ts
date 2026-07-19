@@ -72,8 +72,8 @@ async function bootstrap(): Promise<void> {
 }
 
 /**
- * PublisherModule security condition #4: PUBLISHER_IMPL_FACEBOOK /
- * PUBLISHER_IMPL_YOUTUBE MUST default to "mock" everywhere. This is a
+ * PublisherModule security condition #4: every PUBLISHER_IMPL_* flag
+ * (FACEBOOK / YOUTUBE / TIKTOK / LINE) MUST default to "mock". This is a
  * defense-in-depth check on top of the Joi default/enum validation in
  * env.validation.ts — it specifically guards against a non-production
  * environment (local dev, CI, a demo box) being accidentally pointed at a
@@ -87,6 +87,8 @@ function assertPublisherFlagsAreSafe(appConfig: AppConfig): void {
   const nonMockFlags = [
     appConfig.publisher.facebookImpl !== 'mock' ? 'PUBLISHER_IMPL_FACEBOOK' : null,
     appConfig.publisher.youtubeImpl !== 'mock' ? 'PUBLISHER_IMPL_YOUTUBE' : null,
+    appConfig.publisher.tiktokImpl !== 'mock' ? 'PUBLISHER_IMPL_TIKTOK' : null,
+    appConfig.publisher.lineImpl !== 'mock' ? 'PUBLISHER_IMPL_LINE' : null,
   ].filter((flag): flag is string => flag !== null);
 
   if (nonMockFlags.length === 0) {

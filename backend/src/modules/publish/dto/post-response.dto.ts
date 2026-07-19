@@ -1,4 +1,4 @@
-import { AssetPlatform, Platform, Post, PostStatus } from '@prisma/client';
+import { AssetPlatform, Platform, Post, PostStatus, PublishMethod } from '@prisma/client';
 
 /** API shape of a posts row. Decimal priorityScore exposed as number|null. */
 export class PostResponseDto {
@@ -13,6 +13,8 @@ export class PostResponseDto {
   rankingScoreId!: string | null;
   priorityScore!: number | null;
   externalPostId!: string | null;
+  externalPostUrl!: string | null;
+  publishMethod!: PublishMethod;
   executedBy!: string | null;
   scheduledAt!: Date | null;
   postedAt!: Date | null;
@@ -33,6 +35,8 @@ export class PostResponseDto {
     dto.rankingScoreId = entity.rankingScoreId;
     dto.priorityScore = entity.priorityScore === null ? null : Number(entity.priorityScore);
     dto.externalPostId = entity.externalPostId;
+    dto.externalPostUrl = entity.externalPostUrl;
+    dto.publishMethod = entity.publishMethod;
     dto.executedBy = entity.executedBy;
     dto.scheduledAt = entity.scheduledAt;
     dto.postedAt = entity.postedAt;

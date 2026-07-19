@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { Platform } from '@prisma/client';
 import { DashboardService } from './dashboard.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -180,5 +181,123 @@ describe('DashboardService', () => {
     expect(empty.totals.reach).toBe(0);
     expect(empty.trend).toEqual([]);
     expect(empty.byPlatform).toEqual([]);
+  });
+
+  describe('contentRevenue drill-down (Phase 5A.8)', () => {
+    const CONTENT = {
+      id: 'c1',
+      title: 'Funny clip',
+      type: 'video',
+      contentPillar: 'comedy',
+    };
+
+    function buildDrilldownService(rows: ReturnType<typeof metric>[], content: unknown = CONTENT) {
+      const prisma = {
+        content: { findUnique: jest.fn().mockResolvedValue(content) },
+        metric: { findMany: jest.fn().mockResolvedValue(rows) },
+      };
+      return { service: new DashboardService(prisma as unknown as PrismaService), prisma };
+    }
+
+    it('404s for a content that does not exist', async () => {
+      const { service } = buildDrilldownService([], null);
+
+      await expect(service.contentRevenue('missing', now)).rejects.toThrow(NotFoundException);
+    });
+
+    it('scopes the metric query to the requested content', async () => {
+      const { service, prisma } = buildDrilldownService([]);
+
+      await service.contentRevenue('c1', now);
+
+      const [args] = prisma.metric.findMany.mock.calls[0] as [{ where: unknown }];
+      expect(args.where).toEqual({ post: { contentId: 'c1' } });
+    });
+
+    it('returns zeroed totals for a content with no metrics yet (not a 404)', async () => {
+      const { service } = buildDrilldownService([]);
+
+      const result = await service.contentRevenue('c1', now);
+
+      expect(result.totalRevenue).toBe(0);
+      expect(result.totals).toEqual({ reach: 0, engagement: 0, revenue: 0, posts: 0 });
+      expect(result.byPost).toEqual([]);
+      expect(result.trend).toEqual([]);
+      expect(result.title).toBe('Funny clip');
+    });
+
+    it('splits by platform and by post using latest-per-post, so it reconciles with the summary', async () => {
+      const { service } = buildDrilldownService([
+        // post-1 has an older and a newer reading — only the newer counts.
+        metric({
+          postId: 'post-1',
+          contentId: 'c1',
+          platform: Platform.facebook,
+          reach: 100,
+          engagement: 10,
+          revenue: 5,
+          collectedAt: '2026-07-16T00:00:00Z',
+        }),
+        metric({
+          postId: 'post-1',
+          contentId: 'c1',
+          platform: Platform.facebook,
+          reach: 300,
+          engagement: 30,
+          revenue: 20,
+          collectedAt: '2026-07-18T00:00:00Z',
+        }),
+        metric({
+          postId: 'post-2',
+          contentId: 'c1',
+          platform: Platform.tiktok,
+          reach: 900,
+          engagement: 90,
+          revenue: 12.5,
+          collectedAt: '2026-07-18T00:00:00Z',
+        }),
+      ]);
+
+      const result = await service.contentRevenue('c1', now);
+
+      expect(result.totalRevenue).toBe(32.5); // 20 + 12.5, not 37.5
+      expect(result.totals.posts).toBe(2);
+      expect(result.byPost).toHaveLength(2);
+      // Sorted by revenue descending.
+      expect(result.byPost[0]).toMatchObject({ postId: 'post-1', revenue: 20 });
+      expect(result.byPost[1]).toMatchObject({ postId: 'post-2', revenue: 12.5 });
+      expect(result.byPlatform.map((p) => p.platform)).toEqual([
+        Platform.facebook,
+        Platform.tiktok,
+      ]);
+    });
+
+    it('surfaces publishMethod and the external id/URL so a manual record is distinguishable', async () => {
+      const row = metric({
+        postId: 'post-9',
+        contentId: 'c1',
+        platform: Platform.tiktok,
+        reach: 500,
+        engagement: 40,
+        revenue: 8,
+        collectedAt: '2026-07-18T00:00:00Z',
+      });
+      Object.assign(row.post, {
+        publishMethod: 'manual_external',
+        externalPostId: 'tt-7788',
+        externalPostUrl: 'https://www.tiktok.com/@acct/video/7788',
+        postedAt: new Date('2026-07-17T00:00:00Z'),
+      });
+      const { service } = buildDrilldownService([row]);
+
+      const result = await service.contentRevenue('c1', now);
+
+      expect(result.byPost[0]).toMatchObject({
+        publishMethod: 'manual_external',
+        externalPostId: 'tt-7788',
+        externalPostUrl: 'https://www.tiktok.com/@acct/video/7788',
+        metricSource: 'api',
+      });
+    });
   });
 });

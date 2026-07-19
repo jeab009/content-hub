@@ -4,6 +4,7 @@ import { AdminGuard } from '../../common/guards/admin.guard';
 import { CsrfGuard } from '../../common/guards/csrf.guard';
 import { CurrentUserId } from '../../common/decorators/current-user.decorator';
 import { RankingEngineService } from './ranking-engine.service';
+import { RankingEngineSelectorService } from './ranking-engine-selector.service';
 import { RankingScoreResponseDto } from './dto/ranking-score-response.dto';
 
 /**
@@ -15,16 +16,23 @@ import { RankingScoreResponseDto } from './dto/ranking-score-response.dto';
 @Controller('api/contents')
 @UseGuards(SessionAuthGuard, AdminGuard)
 export class RankingController {
-  constructor(private readonly rankingEngine: RankingEngineService) {}
+  constructor(
+    private readonly rankingEngine: RankingEngineService,
+    private readonly engineSelector: RankingEngineSelectorService,
+  ) {}
 
-  /** Recomputes scores for every ranked platform and returns the new rows. */
+  /**
+   * Recomputes scores for every ranked platform and returns the new rows.
+   * Which engine runs is decided by the RANKING_ENGINE flag (default v1);
+   * every returned row carries its own engineVersion.
+   */
   @Post(':id/rank')
   @UseGuards(CsrfGuard)
   async rank(
     @Param('id', ParseUUIDPipe) contentId: string,
     @CurrentUserId() userId: string,
   ): Promise<RankingScoreResponseDto[]> {
-    const scores = await this.rankingEngine.computeScores(contentId, userId);
+    const scores = await this.engineSelector.computeScores(contentId, userId);
     return scores.map(RankingScoreResponseDto.fromEntity);
   }
 

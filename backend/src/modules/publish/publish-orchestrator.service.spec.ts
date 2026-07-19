@@ -1,5 +1,5 @@
 import { ConflictException, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { AssetPlatform, ContentPillar, PostStatus, Prisma } from '@prisma/client';
+import { AssetPlatform, ContentPillar, PostStatus, Prisma, PublishMethod } from '@prisma/client';
 import { Queue } from 'bullmq';
 import { PublishOrchestratorService } from './publish-orchestrator.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -9,6 +9,7 @@ import { RankingEngineService } from '../ranking/ranking-engine.service';
 import { StepUpAuthService } from './step-up-auth.service';
 import { PlatformAdapterRegistry } from './adapters/platform-adapter.registry';
 import { CreatePostDto } from './dto/create-post.dto';
+import { RecordManualExternalDto } from './dto/record-manual-external.dto';
 
 const ADMIN_ID = 'admin-1';
 
@@ -38,6 +39,21 @@ function buildDto(overrides: Partial<CreatePostDto> = {}): CreatePostDto {
   Object.assign(dto, {
     contentId: 'content-1',
     platform: AssetPlatform.facebook,
+    password: 'correct-password',
+    ...overrides,
+  });
+  return dto;
+}
+
+/** Default records a TikTok post — which is an OVERRIDE, since the fixture
+ *  recommendation is facebook. Pass platform: facebook for the non-override case. */
+function buildManualDto(overrides: Partial<RecordManualExternalDto> = {}): RecordManualExternalDto {
+  const dto = new RecordManualExternalDto();
+  Object.assign(dto, {
+    contentId: 'content-1',
+    platform: AssetPlatform.tiktok,
+    externalPostId: 'tt-7788',
+    externalPostUrl: 'https://www.tiktok.com/@acct/video/7788',
     password: 'correct-password',
     ...overrides,
   });
@@ -352,6 +368,138 @@ describe('PublishOrchestratorService', () => {
       const [{ data }] = prisma.post.update.mock.calls[0] as [{ data: Record<string, unknown> }];
       expect(data.wasOverride).toBe(true); // facebook recommended, youtube selected
       expect(queue.add).toHaveBeenCalled();
+    });
+  });
+
+  describe('recordManualExternal (Phase 5 manual-external-record path)', () => {
+    it('records a tiktok post as posted/manual_external without dispatching anything', async () => {
+      const post = await service.recordManualExternal(buildManualDto(), ADMIN_ID, '203.0.113.7');
+
+      const [{ data }] = prisma.post.create.mock.calls[0] as [{ data: Record<string, unknown> }];
+      expect(data.status).toBe(PostStatus.posted);
+      expect(data.publishMethod).toBe(PublishMethod.manual_external);
+      expect(data.externalPostId).toBe('tt-7788');
+      expect(data.externalPostUrl).toBe('https://www.tiktok.com/@acct/video/7788');
+      expect(data.selectedPlatform).toBe(AssetPlatform.tiktok);
+      expect(data.platform).toBe('tiktok'); // bridged onto the Post platform enum
+      expect(data.executedBy).toBe(ADMIN_ID);
+      expect(data.postedAt).toBeInstanceOf(Date);
+
+      // A record is not a dispatch: no adapter, no queue job.
+      expect(queue.add).not.toHaveBeenCalled();
+      expect(post.id).toBe('post-1');
+    });
+
+    it('audit-logs the record with the typed action and no password in the meta', async () => {
+      await service.recordManualExternal(buildManualDto(), ADMIN_ID, '203.0.113.7');
+
+      const [entry] = auditLog.record.mock.calls.at(-1) as [
+        { action: string; result: string; ip?: string; meta: Record<string, unknown> },
+      ];
+      expect(entry.action).toBe('manual_external_post_recorded');
+      expect(entry.result).toBe('success');
+      expect(entry.ip).toBe('203.0.113.7');
+      expect(entry.meta.externalPostId).toBe('tt-7788');
+      expect(JSON.stringify(entry.meta)).not.toContain('correct-password');
+    });
+
+    it('rejects with 401 before any write when the step-up password is wrong', async () => {
+      stepUp.assertFreshPassword.mockRejectedValue(new UnauthorizedException());
+
+      await expect(service.recordManualExternal(buildManualDto(), ADMIN_ID)).rejects.toThrow(
+        UnauthorizedException,
+      );
+
+      expect(prisma.post.create).not.toHaveBeenCalled();
+      expect(auditLog.record).not.toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'manual_external_post_recorded', result: 'success' }),
+      );
+    });
+
+    it('passes the manual-record action to step-up so a failure is not attributed to publish', async () => {
+      await service.recordManualExternal(buildManualDto(), ADMIN_ID);
+
+      expect(stepUp.assertFreshPassword).toHaveBeenCalledWith(
+        ADMIN_ID,
+        'correct-password',
+        undefined,
+        'manual_external_post_recorded',
+      );
+    });
+
+    it('rejects with 409 when an active post already exists for the (content, platform)', async () => {
+      prisma.post.findFirst.mockResolvedValue({ id: 'post-existing', status: PostStatus.posted });
+
+      await expect(service.recordManualExternal(buildManualDto(), ADMIN_ID)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prisma.post.create).not.toHaveBeenCalled();
+    });
+
+    it('translates the DB partial-unique violation into the same 409 under a race', async () => {
+      prisma.post.create.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('duplicate', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      );
+
+      await expect(service.recordManualExternal(buildManualDto(), ADMIN_ID)).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
+    it('still enforces the copyright gate — recording must not be a bypass', async () => {
+      prisma.content.findUnique.mockResolvedValue({
+        ...readyContent,
+        copyrightCleared: 'not_checked',
+      });
+
+      await expect(service.recordManualExternal(buildManualDto(), ADMIN_ID)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prisma.post.create).not.toHaveBeenCalled();
+    });
+
+    // was_override is recomputed server-side from ranking_scores, exactly as on
+    // the dispatch path. It is never read from the request — ranking v2's
+    // override_feedback factor learns from these rows.
+    describe('server-side was_override recompute', () => {
+      it('is TRUE when the recorded platform differs from the recommendation', async () => {
+        await service.recordManualExternal(buildManualDto(), ADMIN_ID);
+
+        const [{ data }] = prisma.post.create.mock.calls[0] as [{ data: Record<string, unknown> }];
+        expect(data.wasOverride).toBe(true); // facebook recommended, tiktok recorded
+        expect(data.recommendedPlatform).toBe(AssetPlatform.facebook);
+      });
+
+      it('is FALSE when the recorded platform IS the recommendation', async () => {
+        await service.recordManualExternal(
+          buildManualDto({ platform: AssetPlatform.facebook }),
+          ADMIN_ID,
+        );
+
+        const [{ data }] = prisma.post.create.mock.calls[0] as [{ data: Record<string, unknown> }];
+        expect(data.wasOverride).toBe(false);
+        expect(data.recommendedPlatform).toBe(AssetPlatform.facebook);
+      });
+
+      it('ignores any client-supplied override facts', async () => {
+        const dto = buildManualDto();
+        // Simulate a body that slipped past validation carrying forged facts.
+        Object.assign(dto, {
+          wasOverride: false,
+          recommendedPlatform: AssetPlatform.tiktok,
+          status: PostStatus.draft,
+        });
+
+        await service.recordManualExternal(dto, ADMIN_ID);
+
+        const [{ data }] = prisma.post.create.mock.calls[0] as [{ data: Record<string, unknown> }];
+        expect(data.wasOverride).toBe(true);
+        expect(data.recommendedPlatform).toBe(AssetPlatform.facebook);
+        expect(data.status).toBe(PostStatus.posted);
+      });
     });
   });
 });

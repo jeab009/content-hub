@@ -42,7 +42,16 @@ export type AuditAction =
   | 'comment_erased'
   | 'comment_template_created'
   | 'comment_template_updated'
-  | 'comment_template_deleted';
+  | 'comment_template_deleted'
+  // Phase 5 — manual-external-record path (TikTok/LINE OA are published
+  // natively by the admin, then recorded here; see phase5-project-plan.md
+  // Decision 1). Ranking v2 deliberately has NO new action: it reuses
+  // 'ranking_recomputed', which already carries engineVersion in its meta, so
+  // any existing alert aggregating on that action keeps seeing every recompute.
+  | 'manual_external_post_recorded'
+  // Phase 5 — report export. Meta carries who/when/report/filters and NEVER
+  // any PII (comment exports are aggregate-only; see the export service).
+  | 'report_exported';
 
 export type AuditResult = 'success' | 'failure';
 

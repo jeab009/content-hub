@@ -77,6 +77,17 @@ services:
       FACEBOOK_REDIRECT_URI: http://localhost:4000/api/connected-accounts/facebook/callback
       FACEBOOK_GRAPH_API_VERSION: v21.0
       FACEBOOK_OAUTH_SCOPES: pages_show_list,pages_read_engagement,pages_manage_posts
+      # Publisher safety flags — all four MUST stay "mock" outside an explicit
+      # production opt-in; the backend refuses to boot otherwise (see
+      # assertPublisherFlagsAreSafe in backend/src/main.ts). TikTok/LINE live
+      # paths are unverified stubs — the delivered path for those two is the
+      # manual-external-record endpoint.
+      PUBLISHER_IMPL_FACEBOOK: ${PUBLISHER_IMPL_FACEBOOK:-mock}
+      PUBLISHER_IMPL_YOUTUBE: ${PUBLISHER_IMPL_YOUTUBE:-mock}
+      PUBLISHER_IMPL_TIKTOK: ${PUBLISHER_IMPL_TIKTOK:-mock}
+      PUBLISHER_IMPL_LINE: ${PUBLISHER_IMPL_LINE:-mock}
+      # Ranking engine selector: v1 (frozen, FB/YT) | v2 (5 factors, 4 platforms).
+      RANKING_ENGINE: ${RANKING_ENGINE:-v1}
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@example.com}
       SEED_ADMIN_NAME: ${SEED_ADMIN_NAME:-Content Hub Admin}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}

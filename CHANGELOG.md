@@ -1,5 +1,54 @@
 # Changelog
 
+> Note: Phases 2–4 were tracked in `docs/phase*-*.md` rather than here; this
+> file resumes at Phase 5.
+
+## Phase 5.0 + 5A — Multi-platform backend, ranking v2, CSV export (2026-07-19)
+
+Backend-only pass. Frontend (5B) and live adapters/PDF (5C) are NOT in this
+change.
+
+### Added
+
+- **Schema (additive)**: `posts.external_post_url` (nullable) and
+  `posts.publish_method` (`PublishMethod` enum: `adapter` default |
+  `manual_external`). Migration
+  `20260719120223_phase5_0_publish_method_external_url`. Legacy rows stay valid
+  with no backfill.
+- **Cadence seed**: TikTok 14/week and LINE OA 3/week, admin-confirmed
+  (`is_provisional=false`), idempotent like the existing rows. Pillar ratio
+  policies are platform-independent and unchanged.
+- **TikTok + LINE OA adapters** (`tiktok.adapter.ts`, `line.adapter.ts`),
+  registered in `PlatformAdapterRegistry` — all four `AssetPlatform` values now
+  resolve. Mock-first, gated by `PUBLISHER_IMPL_TIKTOK` / `PUBLISHER_IMPL_LINE`
+  (default `mock`). **Their live paths are unverified stubs that reject
+  cleanly** — no credentials exist, and no live integration is claimed.
+- **`POST /api/posts/manual-external`**: records a post the admin published
+  natively on the platform (the delivered TikTok/LINE path). Step-up re-auth +
+  CSRF + AdminGuard + login-grade throttle, server-side `was_override`
+  recompute, active-duplicate 409, audit action
+  `manual_external_post_recorded`.
+- **Ranking engine v2** (`RankingEngineV2Service`): five explainable factors
+  over all four platforms — engagement blended with revenue, plus a new
+  `override_feedback` factor learned from the admin's own past decisions
+  (raw counts in the reasoning jsonb; neutral below a 5-decision floor).
+  Selected by `RANKING_ENGINE` (default `v1`).
+- **CSV exports** (`/api/reports/*.csv`): revenue drill-down, override log, and
+  comment summary. Admin-only, audited (`report_exported`, no PII), hand-rolled
+  CSV with formula-injection escaping. The comment report is **aggregate-only**
+  — it never selects author, text, author id, or reply text (PDPA).
+- **`GET /api/dashboard/revenue/:contentId`**: per-content revenue drill-down
+  by platform, by post, and over time.
+- Env: `PUBLISHER_IMPL_TIKTOK`, `PUBLISHER_IMPL_LINE`, `RANKING_ENGINE` — all
+  with safe defaults, documented in `.env.example` and `docker-compose.yml`.
+
+### Unchanged (deliberately)
+
+- **Ranking v1 is frozen**: `RankingEngineService`, `RankingFactorsService`,
+  and the v1 `FACTOR_WEIGHTS` / `RANKED_PLATFORMS` values are untouched, and
+  all pre-existing v1 tests pass unedited. A golden regression test asserts v2
+  reproduces v1's recommendation on legacy no-history content.
+
 ## Phase 1 — Foundation — Demo rollout (2026-07-15)
 
 DevOps/Rollout pass: git repo initialized (previously ungitted), docker-compose

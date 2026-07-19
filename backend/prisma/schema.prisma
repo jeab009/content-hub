@@ -75,6 +75,17 @@ enum MetricSource {
   manual
 }
 
+// Phase 5.0: how a post reached the platform. `adapter` = published through a
+// PlatformAdapter by this system (FB/YT, and TikTok/LINE in mock mode);
+// `manual_external` = the admin published natively on the platform and then
+// recorded the resulting external id/URL here (the delivered TikTok/LINE path,
+// see docs/phase5-project-plan.md Decision 1). Default `adapter` so every
+// legacy row stays valid without a backfill.
+enum PublishMethod {
+  adapter
+  manual_external
+}
+
 enum Sentiment {
   positive
   negative
@@ -335,6 +346,13 @@ model Post {
   // Phase 2 addition: optimistic-concurrency guard for the publish
   // orchestrator's conditional UPDATEs. See docs/publish-orchestration-addendum.md §2.
   version        Int        @default(0)
+  // Phase 5.0 additions (manual-external-record path). `externalPostUrl` is
+  // the human-verifiable permalink the admin pasted when recording a natively
+  // published post — nullable because adapter publishes don't produce one.
+  // `publishMethod` distinguishes adapter-published from manually-recorded
+  // rows for audit/analytics; defaults to `adapter` so legacy rows are valid.
+  externalPostUrl String?       @map("external_post_url")
+  publishMethod   PublishMethod @default(adapter) @map("publish_method")
   // Phase 2 Pass B additions (ranking-informed publish). All nullable
   // because legacy Phase 1 rows predate the ranking engine.
   // `recommendedPlatform` / `wasOverride` are ALWAYS recomputed server-side

@@ -1,8 +1,12 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, UseGuards } from '@nestjs/common';
 import { SessionAuthGuard } from '../../common/guards/session-auth.guard';
 import { AdminGuard } from '../../common/guards/admin.guard';
 import { DashboardService } from './dashboard.service';
-import { DashboardOverviewDto, DashboardRevenueDto } from './dto/dashboard.dto';
+import {
+  ContentRevenueDrilldownDto,
+  DashboardOverviewDto,
+  DashboardRevenueDto,
+} from './dto/dashboard.dto';
 
 /** Phase 3 dashboard read endpoints. Admin-only, read-only (no CSRF on GET). */
 @Controller('api/dashboard')
@@ -18,5 +22,16 @@ export class DashboardController {
   @Get('revenue')
   revenue(): Promise<DashboardRevenueDto> {
     return this.dashboard.revenue();
+  }
+
+  /**
+   * Per-content revenue drill-down (Phase 5A.8) — the level below the
+   * byContent rows returned by `revenue()`.
+   */
+  @Get('revenue/:contentId')
+  contentRevenue(
+    @Param('contentId', ParseUUIDPipe) contentId: string,
+  ): Promise<ContentRevenueDrilldownDto> {
+    return this.dashboard.contentRevenue(contentId);
   }
 }

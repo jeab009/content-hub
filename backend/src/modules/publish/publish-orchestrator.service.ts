@@ -10,6 +10,7 @@ import {
   Post,
   PostStatus,
   Prisma,
+  PublishMethod,
   RankingScore,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -23,6 +24,7 @@ import { PlatformAdapterRegistry } from './adapters/platform-adapter.registry';
 import { InvalidPostStateTransitionError, isDispatchable } from './post-state';
 import { CreatePostDto } from './dto/create-post.dto';
 import { ListPostsQueryDto } from './dto/list-posts-query.dto';
+import { RecordManualExternalDto } from './dto/record-manual-external.dto';
 
 export const PUBLISH_JOB_NAME = 'dispatch';
 
@@ -149,6 +151,84 @@ export class PublishOrchestratorService {
 
     await this.auditAndEnqueue(updated, userId, account.id, ip);
     return updated;
+  }
+
+  /**
+   * POST /api/posts/manual-external — record a post the admin already
+   * published natively on the platform (the delivered TikTok/LINE OA path;
+   * see docs/phase5-project-plan.md Decision 1).
+   *
+   * This is a RECORD, not a dispatch: no adapter is invoked and nothing is
+   * enqueued, because the post already exists in the world. Everything else is
+   * deliberately identical to createAndDispatch — step-up re-auth, the
+   * publishable-content gate, the active-duplicate guard, and above all the
+   * SERVER-SIDE was_override recompute. That last one matters more here than
+   * anywhere else: ranking v2's override_feedback factor learns from these
+   * rows, so a client-supplied wasOverride would be a way to quietly train the
+   * recommender. The DTO has no such field and this method never reads one.
+   *
+   * The content gate is enforced even though the post is already live. It
+   * cannot un-publish anything, but it keeps the invariant that this system
+   * never *tracks* content as published unless it cleared copyright — without
+   * it, "post manually, then record" is a complete bypass of the copyright
+   * gate. An admin who hits this must clear copyright first, then record.
+   */
+  async recordManualExternal(
+    dto: RecordManualExternalDto,
+    userId: string,
+    ip?: string,
+  ): Promise<Post> {
+    await this.stepUpAuth.assertFreshPassword(
+      userId,
+      dto.password,
+      ip,
+      'manual_external_post_recorded',
+    );
+
+    const content = await this.loadContentOrThrow(dto.contentId);
+    this.assertPublishableContent(content);
+    await this.assertNoActiveDuplicate(content.id, dto.platform);
+    const recommendation = await this.recomputeRecommendation(content.id, dto.platform);
+
+    const post = await this.createPostOrConflict(
+      {
+        contentId: content.id,
+        platform: toPostPlatform(dto.platform),
+        selectedPlatform: dto.platform,
+        recommendedPlatform: recommendation.recommendedPlatform,
+        recommendedAt: recommendation.recommendedAt,
+        wasOverride: recommendation.wasOverride,
+        overrideReason: dto.overrideReason ?? null,
+        rankingScoreId: recommendation.selectedScore?.id ?? null,
+        priorityScore: this.toPriorityScore(recommendation.selectedScore),
+        // Already live on the platform — recorded, not dispatched.
+        status: PostStatus.posted,
+        publishMethod: PublishMethod.manual_external,
+        externalPostId: dto.externalPostId,
+        externalPostUrl: dto.externalPostUrl ?? null,
+        postedAt: new Date(),
+        executedBy: userId,
+      },
+      dto.platform,
+    );
+
+    this.auditLog.record({
+      actor: userId,
+      action: 'manual_external_post_recorded',
+      result: 'success',
+      ip,
+      meta: {
+        postId: post.id,
+        contentId: post.contentId,
+        selectedPlatform: post.selectedPlatform,
+        recommendedPlatform: post.recommendedPlatform,
+        wasOverride: post.wasOverride,
+        externalPostId: post.externalPostId,
+        publishMethod: post.publishMethod,
+      },
+    });
+
+    return post;
   }
 
   async list(query: ListPostsQueryDto): Promise<Post[]> {

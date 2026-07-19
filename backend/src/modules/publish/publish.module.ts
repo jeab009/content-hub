@@ -16,6 +16,8 @@ import { StepUpAuthService } from './step-up-auth.service';
 import { PublishProcessor } from './publish.processor';
 import { FacebookAdapter } from './adapters/facebook.adapter';
 import { YouTubeAdapter } from './adapters/youtube.adapter';
+import { TikTokAdapter } from './adapters/tiktok.adapter';
+import { LineAdapter } from './adapters/line.adapter';
 import { PlatformAdapterRegistry } from './adapters/platform-adapter.registry';
 
 /**
@@ -50,6 +52,8 @@ import { PlatformAdapterRegistry } from './adapters/platform-adapter.registry';
     PublishProcessor,
     FacebookAdapter,
     YouTubeAdapter,
+    TikTokAdapter,
+    LineAdapter,
     PlatformAdapterRegistry,
     AdminGuard,
   ],

@@ -46,11 +46,20 @@ export interface AppConfig {
   publisher: {
     facebookImpl: 'mock' | 'facebook';
     youtubeImpl: 'mock' | 'youtube';
+    // Phase 5: same mock/live gate for the two new platforms. Their live
+    // paths are structured stubs that reject cleanly — no verified
+    // integration exists (no credentials; see phase5-project-plan.md C-A).
+    tiktokImpl: 'mock' | 'tiktok';
+    lineImpl: 'mock' | 'line';
     mockLatencyMs: number;
     mockFailureRate: number;
   };
   ranking: {
     weightsPath: string;
+    // Which ranking engine serves recommendations. Defaults to 'v1' until QA
+    // verifies v2 live (phase5-project-plan.md Decision 2); every persisted
+    // score row is tagged with the engine that produced it either way.
+    engine: 'v1' | 'v2';
   };
   sentiment: {
     // 'rule_based' (default, offline, deterministic) | 'model' (self-hosted, flagged).
@@ -127,11 +136,16 @@ export default (): { app: AppConfig } => ({
       // the startup assertion in main.ts (security condition #4).
       facebookImpl: (process.env.PUBLISHER_IMPL_FACEBOOK ?? 'mock') as 'mock' | 'facebook',
       youtubeImpl: (process.env.PUBLISHER_IMPL_YOUTUBE ?? 'mock') as 'mock' | 'youtube',
+      tiktokImpl: (process.env.PUBLISHER_IMPL_TIKTOK ?? 'mock') as 'mock' | 'tiktok',
+      lineImpl: (process.env.PUBLISHER_IMPL_LINE ?? 'mock') as 'mock' | 'line',
       mockLatencyMs: parseInt(process.env.MOCK_PUBLISHER_LATENCY_MS ?? '50', 10),
       mockFailureRate: parseFloat(process.env.MOCK_PUBLISHER_FAILURE_RATE ?? '0'),
     },
     ranking: {
       weightsPath: process.env.RANKING_WEIGHTS_PATH ?? './config/ranking-weights.yaml',
+      // MUST default to 'v1' — an existing .env with no RANKING_ENGINE keeps
+      // today's exact ranking behavior.
+      engine: (process.env.RANKING_ENGINE ?? 'v1') as 'v1' | 'v2',
     },
     sentiment: {
       // MUST default to 'rule_based' — the self-hosted model (4C) is a flagged

@@ -14,6 +14,7 @@ import { SchedulerModule } from './modules/scheduler/scheduler.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { CommentsModule } from './modules/comments/comments.module';
+import { ReportsModule } from './modules/reports/reports.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { CommentsModule } from './modules/comments/comments.module';
     MetricsModule,
     DashboardModule,
     CommentsModule,
+    ReportsModule,
   ],
 })
 export class AppModule {}

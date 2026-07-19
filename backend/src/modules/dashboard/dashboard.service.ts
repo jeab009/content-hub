@@ -1,11 +1,13 @@
-import { Injectable } from '@nestjs/common';
-import { Content, Metric, Platform, Post } from '@prisma/client';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { Content, Metric, Platform, Post, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  ContentRevenueDrilldownDto,
   DashboardOverviewDto,
   DashboardRevenueDto,
   PlatformBreakdownItem,
   RevenueByContentItem,
+  RevenueByPostItem,
   TrendPoint,
 } from './dto/dashboard.dto';
 
@@ -62,8 +64,69 @@ export class DashboardService {
     };
   }
 
-  private loadMetrics(): Promise<MetricWithPost[]> {
+  /**
+   * Phase 5A.8 — the drill-down one level below `revenue()`'s byContent row:
+   * a single content split by platform, by post, and over time.
+   *
+   * Deliberately the same latest-per-post aggregation as every other method
+   * here, so a drill-down always reconciles with the summary it was opened
+   * from. A content that exists but has no metrics yet returns zeroed totals
+   * and empty breakdowns rather than 404 — "published, nothing measured yet"
+   * is a real state the UI needs to render.
+   */
+  async contentRevenue(
+    contentId: string,
+    now: Date = new Date(),
+  ): Promise<ContentRevenueDrilldownDto> {
+    const content = await this.prisma.content.findUnique({ where: { id: contentId } });
+    if (!content) {
+      throw new NotFoundException('Content not found');
+    }
+
+    const metrics = await this.loadMetrics({ post: { contentId } });
+    const latest = latestPerPost(metrics);
+    const totals = sumTally(latest);
+
+    return {
+      generatedAt: now,
+      contentId,
+      title: content.title,
+      type: content.type,
+      contentPillar: content.contentPillar,
+      totalRevenue: round2(totals.revenue),
+      totals: {
+        reach: totals.reach,
+        engagement: totals.engagement,
+        revenue: round2(totals.revenue),
+        posts: latest.length,
+      },
+      byPlatform: this.byPlatform(latest),
+      byPost: this.byPost(latest),
+      trend: buildTrend(metrics),
+    };
+  }
+
+  private byPost(latest: MetricWithPost[]): RevenueByPostItem[] {
+    return latest
+      .map((metric) => ({
+        postId: metric.postId,
+        platform: metric.platform,
+        publishMethod: metric.post.publishMethod,
+        externalPostId: metric.post.externalPostId,
+        externalPostUrl: metric.post.externalPostUrl,
+        postedAt: metric.post.postedAt,
+        reach: metric.reach,
+        engagement: metric.engagement,
+        revenue: round2(Number(metric.revenue)),
+        metricSource: metric.source,
+        lastCollectedAt: metric.collectedAt,
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
+  }
+
+  private loadMetrics(where?: Prisma.MetricWhereInput): Promise<MetricWithPost[]> {
     return this.prisma.metric.findMany({
+      ...(where && { where }),
       include: { post: { include: { content: true } } },
       orderBy: { collectedAt: 'asc' },
     });

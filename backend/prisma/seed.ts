@@ -58,8 +58,14 @@ const PILLAR_RATIO_NOTE =
   'confirmed by admin 2026-07-16 (adopted recommended default) — see bussiness_rule.md';
 
 /**
- * Posting cadence per platform, confirmed by the admin on 2026-07-16 (same
- * adoption of the recommended defaults as PILLAR_RATIO_SEED above).
+ * Posting cadence per platform. Facebook/YouTube confirmed by the admin on
+ * 2026-07-16 (same adoption of the recommended defaults as PILLAR_RATIO_SEED
+ * above); TikTok/LINE OA confirmed 2026-07-19 at the Phase 5.0 gate — the
+ * values `bussiness_rule.md` deferred with "จะกำหนดเมื่อเข้า Phase 5".
+ * All four are admin-confirmed, hence isProvisional: false.
+ *
+ * Pillar ratio policies are platform-independent (they target content
+ * pillars, not platforms), so the new platforms need no pillar seed.
  */
 const CADENCE_SEED: Array<{
   platform: 'facebook' | 'youtube' | 'tiktok' | 'line_oa';
@@ -68,6 +74,8 @@ const CADENCE_SEED: Array<{
 }> = [
   { platform: 'facebook', targetPostsPerPeriod: 7, periodUnit: 'week' },
   { platform: 'youtube', targetPostsPerPeriod: 3, periodUnit: 'week' },
+  { platform: 'tiktok', targetPostsPerPeriod: 14, periodUnit: 'week' },
+  { platform: 'line_oa', targetPostsPerPeriod: 3, periodUnit: 'week' },
 ];
 
 async function seedPillarRatioPolicies(effectiveFrom: Date): Promise<void> {

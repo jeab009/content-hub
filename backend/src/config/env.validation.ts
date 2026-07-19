@@ -56,10 +56,18 @@ export const envValidationSchema = Joi.object({
   // outside NODE_ENV=production refuses to start.
   PUBLISHER_IMPL_FACEBOOK: Joi.string().valid('mock', 'facebook').default('mock'),
   PUBLISHER_IMPL_YOUTUBE: Joi.string().valid('mock', 'youtube').default('mock'),
+  // Phase 5 additions. Same gate, same 'mock' default. Their live paths are
+  // structured stubs that reject cleanly — no verified integration exists.
+  PUBLISHER_IMPL_TIKTOK: Joi.string().valid('mock', 'tiktok').default('mock'),
+  PUBLISHER_IMPL_LINE: Joi.string().valid('mock', 'line').default('mock'),
   MOCK_PUBLISHER_LATENCY_MS: Joi.number().default(50),
   MOCK_PUBLISHER_FAILURE_RATE: Joi.number().min(0).max(1).default(0),
 
   RANKING_WEIGHTS_PATH: Joi.string().default('./config/ranking-weights.yaml'),
+
+  // Phase 5 ranking engine selector — MUST default to 'v1' so an existing
+  // .env keeps today's behavior. Flipped to 'v2' only after QA verifies it.
+  RANKING_ENGINE: Joi.string().valid('v1', 'v2').default('v1'),
 
   // Phase 4 sentiment classifier gate — MUST default to 'rule_based'. The
   // self-hosted model ('model') is a flagged 4C tail, shipped disabled.

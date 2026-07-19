@@ -1,18 +1,42 @@
 import { AssetPlatform, Prisma } from '@prisma/client';
 
 /**
- * Platforms the v1 ranking engine scores. Facebook and YouTube are the two
- * platforms with a working connect flow + publish adapter in Pass B; TikTok
- * and LINE OA join in Phase 5 by extending this list (the engine itself is
- * platform-count agnostic).
+ * Platforms the **v1** ranking engine scores. Facebook and YouTube are the two
+ * platforms with a working connect flow + publish adapter in Pass B. FROZEN at
+ * two entries: v1's computeScores iterates this list, so adding to it changes
+ * how many score rows v1 writes. Phase 5's four-platform scoring set lives in
+ * RANKED_PLATFORMS_V2 (ranking-v2.constants.ts) instead.
  *
- * ORDER IS SEMANTIC: it is the documented tie-break order for recommendations
- * — on equal scores the platform earlier in this list wins (see
- * pickRecommendedScore). Reordering it changes recommendation outcomes.
+ * ORDER IS SEMANTIC: these two entries lead PLATFORM_TIE_BREAK_ORDER, the
+ * documented tie-break order for recommendations — on equal scores the
+ * platform earlier in that list wins (see pickRecommendedScore). Reordering
+ * changes recommendation outcomes.
  */
 export const RANKED_PLATFORMS: readonly AssetPlatform[] = [
   AssetPlatform.facebook,
   AssetPlatform.youtube,
+];
+
+/**
+ * Tie-break order for recommendations across ALL platforms — the v1 pair
+ * followed by the Phase 5 additions, APPENDED and never reordered.
+ *
+ * Why this is separate from RANKED_PLATFORMS: that constant does double duty
+ * in v1 — it is both the *set of platforms the v1 engine scores* and the
+ * tie-break order. Phase 5 only wants to extend the latter. Appending
+ * tiktok/line_oa to RANKED_PLATFORMS itself would silently make the FROZEN v1
+ * engine emit four score rows per content instead of two (it iterates this
+ * list in computeScores), changing v1 behavior and breaking its tests. So the
+ * two concerns are split here: v1 keeps scoring its two platforms, while the
+ * shared tie-break can rank all four.
+ *
+ * Facebook and YouTube keep index 0 and 1, so every existing tie-break
+ * outcome is bit-for-bit unchanged.
+ */
+export const PLATFORM_TIE_BREAK_ORDER: readonly AssetPlatform[] = [
+  ...RANKED_PLATFORMS,
+  AssetPlatform.tiktok,
+  AssetPlatform.line_oa,
 ];
 
 /** Minimal shape the recommendation tie-break needs from a score row. */
@@ -24,8 +48,9 @@ export interface ScoreLike {
 /**
  * The single, shared "which platform does this set of scores recommend?"
  * rule. Highest score wins; ties break deterministically toward the platform
- * that appears earlier in RANKED_PLATFORMS (a platform not in the list sorts
- * last). Returns null for an empty set.
+ * that appears earlier in PLATFORM_TIE_BREAK_ORDER (a platform not in the list
+ * sorts last). Returns null for an empty set. Shared by v1 AND v2 — the reason
+ * the tie-break order covers all four platforms.
  *
  * Both the per-content ranking path (RankingEngineService.getRecommendation,
  * which the publish-time override recompute reads) and the batched scheduler
@@ -37,7 +62,7 @@ export function pickRecommendedScore<T extends ScoreLike>(scores: readonly T[]):
     return null;
   }
   const rank = (platform: AssetPlatform): number => {
-    const index = RANKED_PLATFORMS.indexOf(platform);
+    const index = PLATFORM_TIE_BREAK_ORDER.indexOf(platform);
     return index === -1 ? Number.MAX_SAFE_INTEGER : index;
   };
   return scores.reduce((best, row) => {
@@ -89,7 +114,12 @@ export const FACTOR_WEIGHTS = {
 export const RECENT_POSTS_WINDOW_DAYS = 30;
 
 export type RankingFactorName =
-  'engagement_history' | 'api_availability' | 'pillar_alignment' | 'cadence_pressure';
+  | 'engagement_history'
+  | 'api_availability'
+  | 'pillar_alignment'
+  | 'cadence_pressure'
+  // Phase 5, v2 only. Additive union member — no v1 code path emits it.
+  | 'override_feedback';
 
 /**
  * One explainable factor of a ranking score. `value` is the normalized
