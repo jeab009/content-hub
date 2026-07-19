@@ -5,6 +5,8 @@
  * on any mutating request — the backend's CsrfGuard rejects mutations
  * without it.
  */
+import { buildCommentQuery } from '@/lib/comment-logic';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:4000';
 
 export class ApiError extends Error {
@@ -379,6 +381,99 @@ export interface DashboardRevenue {
   byPlatform: PlatformBreakdownItem[];
 }
 
+// --- Comments (Phase 4) domain types. String unions mirror the backend
+// Prisma enums / DTOs exactly (backend/prisma/schema.prisma + the comments
+// module DTOs) — keep them in sync. A Comment.platform is a Prisma `Platform`,
+// so it reuses PostPlatform.
+
+export type CommentSentiment = 'positive' | 'negative' | 'neutral';
+export type CommentPriority = 'complaint' | 'question' | 'spam' | 'general';
+export type SentimentSource = 'rule_based' | 'model';
+
+/** Inbox row — matches CommentResponseDto. `slaBreach` is computed server-side. */
+export interface Comment {
+  id: string;
+  postId: string;
+  platform: PostPlatform;
+  author: string;
+  text: string;
+  sentiment: CommentSentiment | null;
+  sentimentSource: SentimentSource | null;
+  priority: CommentPriority | null;
+  slaDueAt: string | null;
+  slaBreach: boolean;
+  replyable: boolean;
+  repliedAt: string | null;
+  replyText: string | null;
+  collectedAt: string;
+}
+
+/** Matches PaginatedCommentsDto. */
+export interface PaginatedComments {
+  items: Comment[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+/** Only the params the backend ListCommentsQueryDto accepts — anything else 400s. */
+export interface ListCommentsQuery {
+  platform?: PostPlatform;
+  sentiment?: CommentSentiment;
+  priority?: CommentPriority;
+  slaBreach?: boolean;
+  replied?: boolean;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface CommentSyncItemResult {
+  postId: string;
+  platform: PostPlatform;
+  outcome: SyncOutcome;
+  inserted?: number;
+  reason?: string;
+}
+
+/** Matches CommentSyncResultDto — `inserted` = new rows across the batch. */
+export interface CommentSyncResult {
+  ranAt: string;
+  eligible: number;
+  synced: number;
+  skipped: number;
+  failed: number;
+  inserted: number;
+  items: CommentSyncItemResult[];
+}
+
+/** Matches EscalationAlertResponseDto — the negative-spike alert surface. */
+export interface EscalationAlert {
+  id: string;
+  ruleKey: string;
+  windowStart: string;
+  windowEnd: string;
+  negativeCount: number;
+  threshold: number;
+  raisedAt: string;
+  acknowledgedAt: string | null;
+}
+
+/** Matches CommentTemplateResponseDto — a canned reply for the composer picker. */
+export interface CommentTemplate {
+  id: string;
+  title: string;
+  body: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Reply body — matches ReplyCommentDto (`password` = step-up re-auth). */
+export interface ReplyCommentInput {
+  message: string;
+  password: string;
+}
+
 function buildContentQuery(query: ListContentQuery = {}): string {
   const params = new URLSearchParams();
   if (query.type) params.set('type', query.type);
@@ -527,4 +622,37 @@ export const apiClient = {
   getDashboardOverview: () => request<DashboardOverview>('/api/dashboard/overview'),
 
   getDashboardRevenue: () => request<DashboardRevenue>('/api/dashboard/revenue'),
+
+  // --- Comments endpoints (Phase 4B). Reply + purge carry step-up password +
+  // CSRF; sync + ack carry CSRF; list + templates + escalations are reads. ---
+
+  /** Inbox list with filters + pagination (read-only). */
+  listComments: (query?: ListCommentsQuery) =>
+    request<PaginatedComments>(`/api/comments${buildCommentQuery(query)}`),
+
+  /** Pull FB + YouTube comments, classify, triage, escalate. Returns the run summary. */
+  syncComments: (csrfToken: string) =>
+    request<CommentSyncResult>('/api/comments/sync', { method: 'POST', csrfToken }),
+
+  /** Step-up reply to one comment (401 wrong password, 409 not replyable/already replied, 429 throttled). */
+  replyComment: (id: string, body: ReplyCommentInput, csrfToken: string) =>
+    request<Comment>(`/api/comments/${id}/reply`, { method: 'POST', body, csrfToken }),
+
+  /** Active (unacknowledged) escalation alerts for the inbox banner. */
+  listEscalations: (active = true) =>
+    request<EscalationAlert[]>(`/api/comments/escalations?active=${active}`),
+
+  /** Soft-dismiss an alert (does not delete — a deleted row would re-fire). */
+  ackEscalation: (id: string, csrfToken: string) =>
+    request<EscalationAlert>(`/api/comments/escalations/${id}/ack`, {
+      method: 'POST',
+      csrfToken,
+    }),
+
+  /** Canned reply templates for the composer picker (read-only here). */
+  listCommentTemplates: () => request<CommentTemplate[]>('/api/comment-templates'),
+
+  /** PDPA data-subject erasure — single-comment hard-delete (CSRF only, 204). */
+  eraseComment: (id: string, csrfToken: string) =>
+    request<void>(`/api/comments/${id}`, { method: 'DELETE', csrfToken }),
 };
