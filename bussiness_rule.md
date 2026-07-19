@@ -29,6 +29,7 @@ Confirmed business rules only (not tech/design detail — see `makedown.md` for 
 - **วิธี publish: mock adapter + manual-external-record** — ไม่ทำ live integration. เหตุผล: ไม่มี API credential จริง, TikTok Content Posting API ต้อง app audit, LINE Messaging API เป็น broadcast ไม่ใช่ feed post, และ FB/YT live path เองก็ verify แค่ mock
 - Primary path: admin โพสต์เองบน platform จริง → บันทึก `external_post_id` + URL เข้า Content Hub (reuse posted_unconfirmed "Mark posted" flow) → ใช้ track + แนบ metric (revenue manual อยู่แล้ว)
 - Live adapter path ship แบบ flagged ไม่ verify (posture เดียวกับ FB/YT) — revisit เมื่อมี cred จริง
+- **Copyright gate บังคับบน manual-external-record ด้วย** (ยืนยัน 2026-07-19): admin ต้อง clear copyright ก่อนบันทึก post ที่โพสต์เองบน platform. เหตุผล: ถ้าไม่บังคับ "โพสต์เอง แล้วมาบันทึกทีหลัง" กลายเป็นช่องทางหลบ copyright gate ทั้งหมด. gate นี้ห้าม publish ไม่ได้ (post live ไปแล้ว) แต่รักษา audit trail + legal-risk rule
 
 ## Budget/Timeline (decided 2026-07-16)
 
