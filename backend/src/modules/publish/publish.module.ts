@@ -55,6 +55,8 @@ import { PlatformAdapterRegistry } from './adapters/platform-adapter.registry';
   ],
   // Phase 3: MetricsModule reuses the same adapters (single source of truth
   // for mock/live gating) to read post metrics, so the registry is exported.
-  exports: [PlatformAdapterRegistry],
+  // Phase 4: CommentsModule reuses the registry (fetchComments/replyComment)
+  // AND the StepUpAuthService (reply carries the same publish-grade step-up).
+  exports: [PlatformAdapterRegistry, StepUpAuthService],
 })
 export class PublishModule {}

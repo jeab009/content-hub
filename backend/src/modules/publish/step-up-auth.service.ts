@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../prisma/prisma.service';
-import { AuditLogService } from '../../common/audit/audit-log.service';
+import { AuditAction, AuditLogService } from '../../common/audit/audit-log.service';
 
 const GENERIC_STEP_UP_ERROR =
   'Publish confirmation requires your password (step-up re-auth failed)';
@@ -29,8 +29,26 @@ export class StepUpAuthService {
     private readonly auditLog: AuditLogService,
   ) {}
 
-  /** Throws UnauthorizedException (and audit-logs) unless `password` matches the user's hash. */
-  async assertFreshPassword(userId: string, password: string, ip?: string): Promise<void> {
+  /**
+   * Throws UnauthorizedException (and audit-logs) unless `password` matches
+   * the user's hash.
+   *
+   * `failureAction` (System Analyst condition C4) is the AuditAction recorded
+   * on a failed step-up. It is a TYPED union member (never a free string, so a
+   * typo can't create an un-alertable action) and DEFAULTS to
+   * `'publish_attempt_started'` — the publish path passes nothing and is
+   * unchanged byte-for-byte. The reply flow passes `'comment_reply_failed'`
+   * so a reply step-up failure is attributable to reply, not publish. NOTE
+   * for brute-force detection: every step-up failure carries the SHARED
+   * `meta.reason: 'step_up_reauth_failed'`, so an oracle/brute-force query
+   * must aggregate on that reason ACROSS both actions (see C6a).
+   */
+  async assertFreshPassword(
+    userId: string,
+    password: string,
+    ip?: string,
+    failureAction: AuditAction = 'publish_attempt_started',
+  ): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     const passwordMatches = user
       ? await argon2.verify(user.passwordHash, password).catch(() => false)
@@ -39,7 +57,7 @@ export class StepUpAuthService {
     if (!passwordMatches) {
       this.auditLog.record({
         actor: userId,
-        action: 'publish_attempt_started',
+        action: failureAction,
         result: 'failure',
         ip,
         meta: { reason: 'step_up_reauth_failed' },

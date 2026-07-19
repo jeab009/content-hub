@@ -13,6 +13,7 @@ import { PublishModule } from './modules/publish/publish.module';
 import { SchedulerModule } from './modules/scheduler/scheduler.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { CommentsModule } from './modules/comments/comments.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
     SchedulerModule,
     MetricsModule,
     DashboardModule,
+    CommentsModule,
   ],
 })
 export class AppModule {}

@@ -52,6 +52,12 @@ export interface AppConfig {
   ranking: {
     weightsPath: string;
   };
+  sentiment: {
+    // 'rule_based' (default, offline, deterministic) | 'model' (self-hosted, flagged).
+    // Mirrors the PUBLISHER_IMPL_* mock/live gate. CI + demo never set it, so the
+    // rule-based path is the only one exercised by tests (Phase 4 D2).
+    impl: 'rule_based' | 'model';
+  };
 }
 
 export default (): { app: AppConfig } => ({
@@ -126,6 +132,11 @@ export default (): { app: AppConfig } => ({
     },
     ranking: {
       weightsPath: process.env.RANKING_WEIGHTS_PATH ?? './config/ranking-weights.yaml',
+    },
+    sentiment: {
+      // MUST default to 'rule_based' — the self-hosted model (4C) is a flagged
+      // tail and ships disabled. Comments never leave infra either way (D1).
+      impl: (process.env.SENTIMENT_IMPL ?? 'rule_based') as 'rule_based' | 'model',
     },
   },
 });

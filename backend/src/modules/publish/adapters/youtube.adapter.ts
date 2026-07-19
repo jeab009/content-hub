@@ -6,10 +6,14 @@ import { basename, join } from 'node:path';
 import { AppConfig } from '../../../config/configuration';
 import { BasePlatformAdapter } from './base-platform.adapter';
 import {
+  CommentReplyResult,
+  CommentSnapshot,
+  FetchCommentsArgs,
   FetchMetricsArgs,
   MetricSnapshot,
   PublishArgs,
   PublishResult,
+  ReplyCommentArgs,
 } from './platform-adapter.interface';
 import {
   PublisherAmbiguousError,
@@ -22,6 +26,8 @@ const YOUTUBE_RESUMABLE_UPLOAD_URL =
 
 const YOUTUBE_ANALYTICS_URL = 'https://youtubeanalytics.googleapis.com/v2/reports';
 
+const YOUTUBE_DATA_API_URL = 'https://www.googleapis.com/youtube/v3';
+
 interface YouTubeVideoResponse {
   id?: string;
 }
@@ -29,6 +35,28 @@ interface YouTubeVideoResponse {
 interface YouTubeAnalyticsResponse {
   columnHeaders?: Array<{ name?: string }>;
   rows?: Array<Array<number>>;
+}
+
+interface YouTubeCommentThreadsResponse {
+  items?: Array<{
+    snippet?: {
+      canReply?: boolean;
+      topLevelComment?: {
+        id?: string;
+        snippet?: {
+          textOriginal?: string;
+          authorDisplayName?: string;
+          authorChannelId?: { value?: string };
+          publishedAt?: string;
+        };
+      };
+    };
+  }>;
+  nextPageToken?: string;
+}
+
+interface YouTubeCommentInsertResponse {
+  id?: string;
 }
 
 /**
@@ -125,6 +153,102 @@ export class YouTubeAdapter extends BasePlatformAdapter {
       engagement: read('likes') + read('comments') + read('shares'),
       revenue: Math.round(read('estimatedRevenue') * 100) / 100,
     };
+  }
+
+  /**
+   * Live comments via the Data API v3 `commentThreads.list` (top-level
+   * comments for the video). Only reached when PUBLISHER_IMPL_YOUTUBE !=
+   * 'mock'. Threads missing a comment id or text are dropped (C3: never emit a
+   * null external id).
+   */
+  protected async fetchCommentsLive(
+    args: FetchCommentsArgs,
+    accessToken: string,
+  ): Promise<CommentSnapshot[]> {
+    const videoId = args.post.externalPostId;
+    if (!videoId) {
+      throw new PublisherValidationError(
+        `Post ${args.post.id} has no externalPostId; cannot read YouTube comments`,
+      );
+    }
+    const query = new URLSearchParams({
+      part: 'snippet',
+      videoId,
+      maxResults: '100',
+      textFormat: 'plainText',
+    });
+    if (args.sincePageToken) {
+      query.set('pageToken', args.sincePageToken);
+    }
+    let response: Response;
+    try {
+      response = await fetch(`${YOUTUBE_DATA_API_URL}/commentThreads?${query.toString()}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+    } catch (error) {
+      throw new PublisherRejectedError(
+        `Network failure reading YouTube comments: ${(error as Error).message}`,
+      );
+    }
+    if (!response.ok) {
+      throw new PublisherRejectedError(
+        `YouTube Data API rejected the comments read (HTTP ${response.status})`,
+      );
+    }
+    const payload = (await response.json().catch(() => ({}))) as YouTubeCommentThreadsResponse;
+    return (payload.items ?? [])
+      .map((item) => ({ top: item.snippet?.topLevelComment, canReply: item.snippet?.canReply }))
+      .filter(
+        (entry) =>
+          entry.top?.id &&
+          entry.top.id.length > 0 &&
+          typeof entry.top.snippet?.textOriginal === 'string',
+      )
+      .map(({ top, canReply }) => ({
+        externalCommentId: top?.id as string,
+        author: top?.snippet?.authorDisplayName ?? 'YouTube user',
+        authorExternalId: top?.snippet?.authorChannelId?.value ?? null,
+        text: top?.snippet?.textOriginal ?? '',
+        createdAt: top?.snippet?.publishedAt ? new Date(top.snippet.publishedAt) : new Date(),
+        replyable: canReply !== false,
+      }));
+  }
+
+  /**
+   * Live reply via the Data API v3 `comments.insert` (a reply to a top-level
+   * comment). Only reached in live mode.
+   */
+  protected async replyCommentLive(
+    args: ReplyCommentArgs,
+    accessToken: string,
+  ): Promise<CommentReplyResult> {
+    let response: Response;
+    try {
+      response = await fetch(`${YOUTUBE_DATA_API_URL}/comments?part=snippet`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json; charset=UTF-8',
+        },
+        body: JSON.stringify({
+          snippet: { parentId: args.externalCommentId, textOriginal: args.message },
+        }),
+      });
+    } catch (error) {
+      throw new PublisherRejectedError(
+        `Network failure posting YouTube reply: ${(error as Error).message}`,
+      );
+    }
+    if (!response.ok) {
+      throw new PublisherRejectedError(
+        `YouTube Data API rejected the reply (HTTP ${response.status})`,
+      );
+    }
+    const payload = (await response.json().catch(() => ({}))) as YouTubeCommentInsertResponse;
+    if (!payload.id) {
+      throw new PublisherRejectedError('YouTube returned no reply id');
+    }
+    return { replyExternalId: payload.id };
   }
 
   protected async publishLive(args: PublishArgs, accessToken: string): Promise<PublishResult> {

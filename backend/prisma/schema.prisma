@@ -149,6 +149,28 @@ enum EngineVersion {
   v2
 }
 
+// --- Phase 4 additions (Comment Aggregation) ----------------------------
+// Additive-only per the header rule. See docs/phase4-architecture-design.md
+// §1 and docs/phase4-system-analysis.md (conditions C1–C10).
+
+// Rule-based triage class (a separate concern from Sentiment). `general` is
+// the safe default for anything the triage rules don't positively classify —
+// the same "honest neutral default" reasoning as copyright_cleared=not_checked.
+enum CommentPriority {
+  complaint
+  question
+  spam
+  general
+}
+
+// Which classifier produced Comment.sentiment. Mirrors MetricSource(api/manual)
+// so re-classification is auditable: a row tagged `rule_based` today can be
+// re-tagged `model` later and the provenance is never lost.
+enum SentimentSource {
+  rule_based
+  model
+}
+
 model User {
   id                  String    @id @default(uuid()) @db.Uuid
   name                String
@@ -161,8 +183,11 @@ model User {
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
   connectedAccounts ConnectedAccount[]
-  contents          Content[]          @relation("ContentCreatedBy")
-  executedPosts     Post[]             @relation("PostExecutedBy")
+  contents          Content[]              @relation("ContentCreatedBy")
+  executedPosts     Post[]                 @relation("PostExecutedBy")
+  // Phase 4 additions (back-relations for comment reply attribution + templates).
+  repliedComments   Comment[]              @relation("CommentRepliedBy")
+  commentTemplates  CommentReplyTemplate[]
 
   @@map("users")
 }
@@ -391,8 +416,83 @@ model Comment {
   collectedAt DateTime   @map("collected_at")
   createdAt   DateTime   @default(now()) @map("created_at")
 
-  post Post @relation(fields: [postId], references: [id], onDelete: Restrict)
+  // --- Phase 4 additions (all nullable/defaulted; legacy rows stay valid) ---
+  // Platform-native comment id. Namespaced by `platform` in the dedup key so
+  // FB/YT id-format differences can never collide (risk R8). Nullable so any
+  // pre-Phase-4 seed row without one stays valid; Postgres treats NULL as
+  // DISTINCT in a unique index, so multiple legacy nulls never conflict.
+  externalCommentId String?          @map("external_comment_id")
+  // Stable author id from the platform (FB user/psid, YT channelId). Used for
+  // the audit author-reference hash (redact-comment-meta.util) so raw display
+  // names stay out of logs.
+  authorExternalId  String?          @map("author_external_id")
+  priority          CommentPriority? // set by the triage classifier at ingestion
+  sentimentSource   SentimentSource? @map("sentiment_source")
+  slaDueAt          DateTime?        @map("sla_due_at")
+  // Per-comment reply capability (risk R3): FB/YT both have non-replyable
+  // comment types. Captured at ingestion from the adapter; UI disables reply
+  // when false. Defaults true so a legacy/manual row is assumed replyable.
+  replyable         Boolean          @default(true)
+  // Reply outcome (written only by the audited reply flow, comment-reply.service).
+  repliedAt         DateTime?        @map("replied_at")
+  repliedBy         String?          @map("replied_by") @db.Uuid
+  replyText         String?          @map("reply_text")
+  replyExternalId   String?          @map("reply_external_id")
+
+  post    Post  @relation(fields: [postId], references: [id], onDelete: Restrict)
+  replier User? @relation("CommentRepliedBy", fields: [repliedBy], references: [id], onDelete: SetNull)
 
   @@index([postId])
+  // Read-model filter/sort support (inbox lists by these).
+  @@index([platform, sentiment, priority, slaDueAt])
+  // DEDUP KEY — DB-enforced, not app-layer (BUG-QA-001 / QA-OBS-1 lesson).
+  // The AUTHORITATIVE index is a hand-written PARTIAL unique index
+  //   comments_platform_external_key UNIQUE (platform, external_comment_id)
+  //   WHERE external_comment_id IS NOT NULL
+  // in migration 20260719120000_phase4_comment_aggregation (Prisma's `@@unique`
+  // cannot express a WHERE clause — identical convention to
+  // posts_content_platform_active_key). Deliberately NOT declared as a Prisma
+  // `@@unique` here so Prisma does not emit a second, full unique index.
   @@map("comments")
+}
+
+// Phase 4 addition. Admin-owned canned reply templates (capability g). CRUD
+// only; inserting a template into a reply still goes through the full
+// step-up reply flow (comment-reply.service).
+model CommentReplyTemplate {
+  id        String   @id @default(uuid()) @db.Uuid
+  title     String
+  body      String
+  createdBy String   @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  creator User @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@map("comment_reply_templates")
+}
+
+// Phase 4 addition. The alert-dedup ledger (capability f). ONE row per active
+// spike window. The (ruleKey, windowStart) UNIQUE is the hard dedup control
+// the System Analyst requires at the DB layer — an app-layer check alone is
+// what QA-OBS-1 warned against. Re-running escalation over the same window is
+// an idempotent no-op (P2002 caught -> skip), so a spike raises exactly one
+// alert (exit #5).
+model EscalationAlert {
+  id             String    @id @default(uuid()) @db.Uuid
+  // Identifies the rule + partition. Phase 4 default: "negative_spike". Stable string.
+  ruleKey        String    @map("rule_key")
+  windowStart    DateTime  @map("window_start")
+  windowEnd      DateTime  @map("window_end")
+  negativeCount  Int       @map("negative_count")
+  threshold      Int
+  raisedAt       DateTime  @default(now()) @map("raised_at")
+  // Soft-acknowledge so the UI can dismiss a handled alert without deleting the
+  // ledger row (deleting would let the same window re-fire — dedup must persist).
+  acknowledgedAt DateTime? @map("acknowledged_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  @@unique([ruleKey, windowStart]) // DB-enforced alert dedup
+  @@index([raisedAt])
+  @@map("escalation_alerts")
 }

@@ -2,18 +2,66 @@ import { Logger } from '@nestjs/common';
 import { AssetPlatform, Post } from '@prisma/client';
 import { AppConfig } from '../../../config/configuration';
 import {
+  CommentReplyResult,
+  CommentSnapshot,
+  FetchCommentsArgs,
   FetchMetricsArgs,
   MetricSnapshot,
   PlatformAdapter,
   PublishArgs,
   PublishResult,
+  ReplyCommentArgs,
   buildDryRunExternalId,
+  buildDryRunReplyId,
+  buildMockCommentId,
 } from './platform-adapter.interface';
-import {
-  PlatformCapabilityNotImplementedError,
-  PublisherRejectedError,
-  PublisherTokenError,
-} from './publisher.errors';
+import { PublisherRejectedError, PublisherTokenError } from './publisher.errors';
+
+/**
+ * Deterministic synthetic comment bank for mock mode. Thai text spanning the
+ * sentiment classes and triage priorities so the inbox, filters, and
+ * escalation are demoable offline (D2). `text`/`author` are synthetic — no
+ * real person — but still flow through the same redaction path as live data.
+ */
+interface MockCommentSample {
+  author: string;
+  authorSuffix: string;
+  text: string;
+  replyable: boolean;
+}
+
+const MOCK_COMMENT_SAMPLES: readonly MockCommentSample[] = [
+  {
+    author: 'สมชาย ใจดี',
+    authorSuffix: 'a',
+    text: 'บริการแย่มาก ผิดหวังมากครับ ไม่ประทับใจเลย',
+    replyable: true,
+  },
+  {
+    author: 'มานี รักไทย',
+    authorSuffix: 'b',
+    text: 'สินค้านี้ราคาเท่าไหร่ครับ มีส่งต่างจังหวัดไหม?',
+    replyable: true,
+  },
+  {
+    author: 'ปิติ ยินดี',
+    authorSuffix: 'c',
+    text: 'ดีมากเลยค่ะ ชอบมากๆ ประทับใจสุดๆ',
+    replyable: true,
+  },
+  {
+    author: 'Spam Bot',
+    authorSuffix: 'd',
+    text: 'โปรโมชั่นพิเศษ คลิกเลย http://promo.example/win รับฟรี',
+    replyable: true,
+  },
+  {
+    author: 'วิภา สงบ',
+    authorSuffix: 'e',
+    text: 'รับทราบครับ ขอบคุณสำหรับข้อมูล',
+    replyable: false,
+  },
+];
 
 /**
  * Shared adapter skeleton: token presence check, pre-dispatch validation
@@ -40,6 +88,18 @@ export abstract class BasePlatformAdapter implements PlatformAdapter {
     args: FetchMetricsArgs,
     accessToken: string,
   ): Promise<MetricSnapshot>;
+
+  /** The real platform comment read. Only ever reached in live mode. */
+  protected abstract fetchCommentsLive(
+    args: FetchCommentsArgs,
+    accessToken: string,
+  ): Promise<CommentSnapshot[]>;
+
+  /** The real platform reply write. Only ever reached in live mode. */
+  protected abstract replyCommentLive(
+    args: ReplyCommentArgs,
+    accessToken: string,
+  ): Promise<CommentReplyResult>;
 
   /** Per-platform pre-dispatch validation hook (throw PublisherValidationError). */
   protected validateArgs(_args: PublishArgs): void {
@@ -80,16 +140,82 @@ export abstract class BasePlatformAdapter implements PlatformAdapter {
     return this.fetchMetricsLive(args, accessToken);
   }
 
-  fetchComments(_post: Post): Promise<never> {
-    return Promise.reject(
-      new PlatformCapabilityNotImplementedError('fetchComments is not implemented until Phase 4'),
-    );
+  /**
+   * Reads one post's comments. Mirrors fetchMetrics()'s gating exactly: a
+   * faithful token check first (mock included), then either a deterministic
+   * synthetic thread (mock) or the live platform read. Never logs raw
+   * author/text (System Analyst condition C6b) — only counts.
+   */
+  async fetchComments(args: FetchCommentsArgs): Promise<CommentSnapshot[]> {
+    const accessToken = args.accessToken;
+    if (!accessToken || accessToken.trim().length === 0) {
+      throw new PublisherTokenError(
+        `No decrypted access token available for connected account ${args.account.id}`,
+      );
+    }
+    if (!this.isLiveMode()) {
+      return this.mockComments(args.post);
+    }
+    return this.fetchCommentsLive(args, accessToken);
   }
 
-  replyComment(_post: Post, _externalCommentId: string, _message: string): Promise<never> {
-    return Promise.reject(
-      new PlatformCapabilityNotImplementedError('replyComment is not implemented until Phase 4'),
+  /**
+   * Posts one reply. Same gating as publish/fetchMetrics — faithful token
+   * check first, then a deterministic dry-run reply id (mock, honoring
+   * mockFailureRate so clean-fail is testable) or the live reply write.
+   */
+  async replyComment(args: ReplyCommentArgs): Promise<CommentReplyResult> {
+    const accessToken = args.accessToken;
+    if (!accessToken || accessToken.trim().length === 0) {
+      throw new PublisherTokenError(
+        `No decrypted access token available for connected account ${args.account.id}`,
+      );
+    }
+    if (!this.isLiveMode()) {
+      return this.replyDryRun(args);
+    }
+    return this.replyCommentLive(args, accessToken);
+  }
+
+  private async replyDryRun(args: ReplyCommentArgs): Promise<CommentReplyResult> {
+    await this.simulateLatency();
+    if (Math.random() < this.publisherConfig.mockFailureRate) {
+      throw new PublisherRejectedError('Mock reply failure injected (MOCK_PUBLISHER_FAILURE_RATE)');
+    }
+    const replyExternalId = buildDryRunReplyId(this.platform, args.externalCommentId);
+    // Counts/refs only — never the reply message body (C6b/C7).
+    this.logger.log(
+      `[dry-run] ${this.platform}: would reply to comment ${args.externalCommentId} ` +
+        `on post ${args.post.id} — no network call, returning ${replyExternalId}`,
     );
+    return { replyExternalId };
+  }
+
+  /**
+   * Deterministic synthetic comment thread for mock mode, seeded by post id so
+   * a given post always yields the same comments (and thus the same
+   * externalCommentIds, making re-sync dedup idempotent — exit #1). No network
+   * I/O — the mock analogue of publishDryRun. Every id is non-null/non-empty
+   * (C3).
+   */
+  private mockComments(post: Post): CommentSnapshot[] {
+    const seed = hashString(post.id);
+    const postedAt = post.postedAt ?? post.createdAt ?? new Date();
+    const baseTime = new Date(postedAt).getTime();
+    const count = 3 + (seed % (MOCK_COMMENT_SAMPLES.length - 2)); // 3..4 comments
+    const comments: CommentSnapshot[] = [];
+    for (let index = 0; index < count; index += 1) {
+      const sample = MOCK_COMMENT_SAMPLES[(seed + index) % MOCK_COMMENT_SAMPLES.length];
+      comments.push({
+        externalCommentId: buildMockCommentId(this.platform, post.id, index),
+        author: sample.author,
+        authorExternalId: `${this.platform}-user-${sample.authorSuffix}`,
+        text: sample.text,
+        createdAt: new Date(baseTime + index * 60_000),
+        replyable: sample.replyable,
+      });
+    }
+    return comments;
   }
 
   private async publishDryRun(args: PublishArgs): Promise<PublishResult> {

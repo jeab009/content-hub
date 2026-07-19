@@ -54,4 +54,20 @@ describe('StepUpAuthService', () => {
       UnauthorizedException,
     );
   });
+
+  // System Analyst condition C4 — parameterized, typed, defaulted failure action.
+  it('records the caller-supplied failure action while keeping the shared reason (C4)', async () => {
+    await expect(
+      service.assertFreshPassword('admin-1', 'wrong-password', '127.0.0.1', 'comment_reply_failed'),
+    ).rejects.toThrow(UnauthorizedException);
+
+    expect(auditLog.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'comment_reply_failed',
+        result: 'failure',
+        // Shared reason so brute-force detection can aggregate across actions.
+        meta: { reason: 'step_up_reauth_failed' },
+      }),
+    );
+  });
 });

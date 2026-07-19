@@ -32,7 +32,17 @@ export type AuditAction =
   | 'publish_ambiguity_resolved'
   // Phase 3 — metrics ingestion
   | 'metrics_sync_run'
-  | 'metric_manual_added';
+  | 'metric_manual_added'
+  // Phase 4 — comment aggregation
+  | 'comment_sync_run'
+  | 'comment_reply_sent'
+  | 'comment_reply_failed'
+  | 'comment_escalation_raised'
+  | 'comment_retention_purged'
+  | 'comment_erased'
+  | 'comment_template_created'
+  | 'comment_template_updated'
+  | 'comment_template_deleted';
 
 export type AuditResult = 'success' | 'failure';
 

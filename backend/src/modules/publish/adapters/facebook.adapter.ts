@@ -4,10 +4,14 @@ import { AssetPlatform, ContentType } from '@prisma/client';
 import { AppConfig } from '../../../config/configuration';
 import { BasePlatformAdapter } from './base-platform.adapter';
 import {
+  CommentReplyResult,
+  CommentSnapshot,
+  FetchCommentsArgs,
   FetchMetricsArgs,
   MetricSnapshot,
   PublishArgs,
   PublishResult,
+  ReplyCommentArgs,
 } from './platform-adapter.interface';
 import {
   PublisherAmbiguousError,
@@ -22,6 +26,21 @@ interface GraphPublishResponse {
 
 interface GraphInsightsResponse {
   data?: Array<{ name?: string; values?: Array<{ value?: number }> }>;
+}
+
+interface GraphCommentsResponse {
+  data?: Array<{
+    id?: string;
+    message?: string;
+    created_time?: string;
+    can_comment?: boolean;
+    from?: { id?: string; name?: string };
+  }>;
+  paging?: { cursors?: { after?: string } };
+}
+
+interface GraphReplyResponse {
+  id?: string;
 }
 
 /**
@@ -137,6 +156,91 @@ export class FacebookAdapter extends BasePlatformAdapter {
       engagement: read('post_engaged_users'),
       revenue: Math.round(read('content_monetization_earnings') * 100) / 100,
     };
+  }
+
+  /**
+   * Live comments via Graph API `/{external_post_id}/comments`. Only reached
+   * when PUBLISHER_IMPL_FACEBOOK != 'mock'. A comment whose id/message is
+   * missing is dropped (C3: never emit a null external id) rather than
+   * inserted with a null dedup key.
+   */
+  protected async fetchCommentsLive(
+    args: FetchCommentsArgs,
+    accessToken: string,
+  ): Promise<CommentSnapshot[]> {
+    const externalPostId = args.post.externalPostId;
+    if (!externalPostId) {
+      throw new PublisherValidationError(
+        `Post ${args.post.id} has no externalPostId; cannot read Facebook comments`,
+      );
+    }
+    const query = new URLSearchParams({
+      fields: 'id,message,created_time,can_comment,from',
+      access_token: accessToken,
+    });
+    if (args.sincePageToken) {
+      query.set('after', args.sincePageToken);
+    }
+    let response: Response;
+    try {
+      response = await fetch(`${this.graphBaseUrl}/${externalPostId}/comments?${query.toString()}`);
+    } catch (error) {
+      throw new PublisherRejectedError(
+        `Network failure reading Facebook comments: ${(error as Error).message}`,
+      );
+    }
+    if (!response.ok) {
+      throw new PublisherRejectedError(
+        `Facebook Graph API rejected the comments read (HTTP ${response.status})`,
+      );
+    }
+    const payload = (await response.json().catch(() => ({}))) as GraphCommentsResponse;
+    return (payload.data ?? [])
+      .filter((row) => row.id && row.id.length > 0 && typeof row.message === 'string')
+      .map((row) => ({
+        externalCommentId: row.id as string,
+        author: row.from?.name ?? 'Facebook user',
+        authorExternalId: row.from?.id ?? null,
+        text: row.message ?? '',
+        createdAt: row.created_time ? new Date(row.created_time) : new Date(),
+        // Graph exposes can_comment on the comment node; default true when absent.
+        replyable: row.can_comment !== false,
+      }));
+  }
+
+  /**
+   * Live reply via Graph API `POST /{comment_id}/comments`. Only reached in
+   * live mode. A network failure after dispatch is surfaced as a rejection
+   * (the reply orchestrator maps it to a mapped reason code — C7 — and rolls
+   * back the claim); unlike publish, a duplicate reply is guarded at the DB
+   * (repliedAt claim), so surfacing the error is safe.
+   */
+  protected async replyCommentLive(
+    args: ReplyCommentArgs,
+    accessToken: string,
+  ): Promise<CommentReplyResult> {
+    const body = new URLSearchParams({ message: args.message, access_token: accessToken });
+    let response: Response;
+    try {
+      response = await fetch(`${this.graphBaseUrl}/${args.externalCommentId}/comments`, {
+        method: 'POST',
+        body,
+      });
+    } catch (error) {
+      throw new PublisherRejectedError(
+        `Network failure posting Facebook reply: ${(error as Error).message}`,
+      );
+    }
+    if (!response.ok) {
+      throw new PublisherRejectedError(
+        `Facebook Graph API rejected the reply (HTTP ${response.status})`,
+      );
+    }
+    const payload = (await response.json().catch(() => ({}))) as GraphReplyResponse;
+    if (!payload.id) {
+      throw new PublisherRejectedError('Facebook returned no reply id');
+    }
+    return { replyExternalId: payload.id };
   }
 
   protected validateArgs(args: PublishArgs): void {

@@ -60,4 +60,8 @@ export const envValidationSchema = Joi.object({
   MOCK_PUBLISHER_FAILURE_RATE: Joi.number().min(0).max(1).default(0),
 
   RANKING_WEIGHTS_PATH: Joi.string().default('./config/ranking-weights.yaml'),
+
+  // Phase 4 sentiment classifier gate — MUST default to 'rule_based'. The
+  // self-hosted model ('model') is a flagged 4C tail, shipped disabled.
+  SENTIMENT_IMPL: Joi.string().valid('rule_based', 'model').default('rule_based'),
 });

@@ -1,14 +1,18 @@
+import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AssetPlatform, ConnectedAccount, Content, ContentType, Post } from '@prisma/client';
 import { AppConfig } from '../../../config/configuration';
-import { FetchMetricsArgs, PlatformAdapter, PublishArgs } from './platform-adapter.interface';
+import {
+  FetchCommentsArgs,
+  FetchMetricsArgs,
+  PlatformAdapter,
+  PublishArgs,
+  ReplyCommentArgs,
+} from './platform-adapter.interface';
 import { FacebookAdapter } from './facebook.adapter';
 import { YouTubeAdapter } from './youtube.adapter';
-import {
-  PlatformCapabilityNotImplementedError,
-  PublisherTokenError,
-  PublisherValidationError,
-} from './publisher.errors';
+import { PlatformAdapterRegistry } from './platform-adapter.registry';
+import { PublisherTokenError, PublisherValidationError } from './publisher.errors';
 
 /**
  * Shared contract spec, run against every adapter in dry-run (mock) mode —
@@ -129,14 +133,88 @@ describe.each(adapterCases)('PlatformAdapter contract — $name (dry-run)', ({ p
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('stubs Phase 4 capabilities with a typed not-implemented error', async () => {
-    const post = { id: 'post-1' } as Post;
-    await expect(adapter.fetchComments(post)).rejects.toThrow(
-      PlatformCapabilityNotImplementedError,
-    );
-    await expect(adapter.replyComment(post, 'c1', 'hi')).rejects.toThrow(
-      PlatformCapabilityNotImplementedError,
-    );
+  it('reads comments in dry-run mode: deterministic synthetic thread with ZERO network I/O', async () => {
+    const commentsArgs: FetchCommentsArgs = {
+      post: { id: 'post-1', postedAt: new Date('2026-07-10T00:00:00Z') } as Post,
+      account: { id: 'acct-1' } as ConnectedAccount,
+      accessToken: 'decrypted-token',
+    };
+    const first = await adapter.fetchComments(commentsArgs);
+    const second = await adapter.fetchComments(commentsArgs);
+
+    expect(first).toEqual(second); // deterministic for a given post
+    expect(first.length).toBeGreaterThan(0);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  // System Analyst condition C3 — a null/empty external id gets ZERO dedup
+  // protection from the partial unique index, so every mock/live snapshot MUST
+  // carry a non-null, non-empty external id.
+  it('emits only non-null, non-empty externalCommentId values (C3)', async () => {
+    const comments = await adapter.fetchComments({
+      post: { id: 'post-42', postedAt: new Date('2026-07-10T00:00:00Z') } as Post,
+      account: { id: 'acct-1' } as ConnectedAccount,
+      accessToken: 'decrypted-token',
+    });
+    for (const comment of comments) {
+      expect(typeof comment.externalCommentId).toBe('string');
+      expect(comment.externalCommentId.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('rejects fetchComments with a missing token — even in dry-run, so the rehearsal is faithful', async () => {
+    await expect(
+      adapter.fetchComments({
+        post: { id: 'post-1' } as Post,
+        account: { id: 'acct-1' } as ConnectedAccount,
+        accessToken: null,
+      }),
+    ).rejects.toThrow(PublisherTokenError);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('replies in dry-run mode: deterministic reply id with ZERO network I/O', async () => {
+    const replyArgs: ReplyCommentArgs = {
+      post: { id: 'post-1' } as Post,
+      account: { id: 'acct-1' } as ConnectedAccount,
+      accessToken: 'decrypted-token',
+      externalCommentId: 'c-1',
+      message: 'ขอบคุณครับ',
+    };
+    const result = await adapter.replyComment(replyArgs);
+
+    expect(result.replyExternalId).toBe(`dry-run-reply-${platform}-c-1`);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects replyComment with a missing token — even in dry-run, so the rehearsal is faithful', async () => {
+    await expect(
+      adapter.replyComment({
+        post: { id: 'post-1' } as Post,
+        account: { id: 'acct-1' } as ConnectedAccount,
+        accessToken: null,
+        externalCommentId: 'c-1',
+        message: 'hi',
+      }),
+    ).rejects.toThrow(PublisherTokenError);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('PlatformAdapterRegistry — TikTok / LINE OA stay unimplemented (Phase 5)', () => {
+  const registry = new PlatformAdapterRegistry(
+    new FacebookAdapter(configService),
+    new YouTubeAdapter(configService),
+  );
+
+  it('serves FB + YouTube adapters', () => {
+    expect(registry.getFor(AssetPlatform.facebook)).toBeInstanceOf(FacebookAdapter);
+    expect(registry.getFor(AssetPlatform.youtube)).toBeInstanceOf(YouTubeAdapter);
+  });
+
+  it('rejects TikTok and LINE OA — no adapter for any capability yet', () => {
+    expect(() => registry.getFor(AssetPlatform.tiktok)).toThrow(BadRequestException);
+    expect(() => registry.getFor(AssetPlatform.line_oa)).toThrow(BadRequestException);
   });
 });
 

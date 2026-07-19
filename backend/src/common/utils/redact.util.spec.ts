@@ -45,4 +45,59 @@ describe('redactSensitive', () => {
     const input = { id: '123', platform: 'facebook', count: 5 };
     expect(redactSensitive(input)).toEqual(input);
   });
+
+  // Phase 4 — System Analyst condition C1. Comment PII fields are matched by
+  // EXACT key; the intentionally-kept audit references must NOT be clobbered.
+  describe('comment PII (C1) — exact-key masking, references survive', () => {
+    it('masks raw author/text/replyText/authorExternalId and the reply message body', () => {
+      const result = redactSensitive({
+        author: 'สมชาย ใจดี',
+        text: 'บริการแย่มาก',
+        replyText: 'ขออภัยครับ',
+        authorExternalId: 'psid-123',
+        message: 'my reply body',
+      }) as Record<string, unknown>;
+
+      expect(result.author).toBe('[REDACTED]');
+      expect(result.text).toBe('[REDACTED]');
+      expect(result.replyText).toBe('[REDACTED]');
+      expect(result.authorExternalId).toBe('[REDACTED]');
+      expect(result.message).toBe('[REDACTED]');
+    });
+
+    it('keeps the redacted references authorRef/textLength and any context field', () => {
+      const result = redactSensitive({
+        commentId: 'c-1',
+        authorRef: 'a1b2c3d4e5f6',
+        textLength: 42,
+        contextId: 'ctx-9',
+        context: 'inbox',
+        sentiment: 'negative',
+      }) as Record<string, unknown>;
+
+      expect(result.authorRef).toBe('a1b2c3d4e5f6');
+      expect(result.textLength).toBe(42);
+      expect(result.contextId).toBe('ctx-9');
+      expect(result.context).toBe('inbox');
+      expect(result.sentiment).toBe('negative');
+    });
+
+    it('masks nested raw comment fields on the exception/log path', () => {
+      const err = new Error('reply failed');
+      (err as unknown as { comment: unknown }).comment = {
+        author: 'raw name',
+        text: 'raw comment',
+        authorRef: 'keepme12',
+      };
+      const result = redactSensitive({
+        error: err,
+        comment: (err as unknown as { comment: unknown }).comment,
+      }) as {
+        comment: Record<string, unknown>;
+      };
+      expect(result.comment.author).toBe('[REDACTED]');
+      expect(result.comment.text).toBe('[REDACTED]');
+      expect(result.comment.authorRef).toBe('keepme12');
+    });
+  });
 });
