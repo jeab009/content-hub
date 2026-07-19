@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { AdminGuard } from '../guards/admin.guard';
 import { AuditLogService } from './audit-log.service';
 import { AuditLogQueryService } from './audit-log-query.service';
+import { AuditRetentionService } from './audit-retention.service';
 import { AuditLogController } from './audit-log.controller';
 
 /**
@@ -15,7 +16,7 @@ import { AuditLogController } from './audit-log.controller';
 @Global()
 @Module({
   controllers: [AuditLogController],
-  providers: [AuditLogService, AuditLogQueryService, AdminGuard],
+  providers: [AuditLogService, AuditLogQueryService, AuditRetentionService, AdminGuard],
   exports: [AuditLogService],
 })
 export class AuditLogModule {}

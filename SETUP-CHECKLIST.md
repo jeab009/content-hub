@@ -22,9 +22,13 @@ docker compose exec backend npx prisma migrate status   # ควรขึ้น 
 
 ---
 
-## ส่วนที่ 1 — Secrets (บังคับ ก่อนใช้จริงทุกกรณี)
+## ส่วนที่ 1 — Secrets
 
-ตอนนี้เป็นค่า placeholder ทั้งหมด ใครก็ตามที่เห็น repo นี้จะ forge session cookie และถอดรหัส token ได้
+> ✅ **1.1 + 1.2 ทำให้แล้ว (2026-07-20)** — generate `SESSION_SECRET` (64 hex) + `APP_ENCRYPTION_KEY` (32 bytes base64) ใหม่ ใส่ลงทั้ง `.env` (root) และ `backend/.env` ให้ตรงกัน
+> token ที่มีอยู่ถูก **re-encrypt ด้วย key ใหม่** แล้ว (decrypt ด้วย key เก่า → encrypt ด้วย key ใหม่) จึงไม่ต้อง reconnect — ยืนยันแล้ว metric sync 6/6 ผ่าน
+> **พบ drift จริงระหว่างทาง**: `.env` กับ `backend/.env` มี `APP_ENCRYPTION_KEY` คนละตัวอยู่ก่อนแล้ว (container ใช้ root) — แก้ให้ตรงกันแล้ว
+> ค่าเก่าสำรองไว้ที่ scratchpad (`env.root.bak`, `env.backend.bak`) เผื่อต้อง rollback
+> ⚠️ ยังต้องทำเองตอนขึ้น production: **generate ชุดใหม่อีกครั้งสำหรับ production** อย่าใช้ชุดเดียวกับ dev
 
 ### 1.1 สร้าง SESSION_SECRET
 
@@ -219,15 +223,17 @@ scope ที่ระบบขอ (ตั้งไว้แล้ว ไม่�
 
 ## ส่วนที่ 6 — ตัดสินใจเชิงนโยบาย
 
-### 6.1 Audit retention
+### 6.1 Audit retention — ✅ ตัดสินใจ + implement แล้ว (2026-07-20)
 
-ตาราง `audit_logs` เก็บถาวร ไม่มีนโยบายลบ
+**นโยบาย: anonymize PII เก็บแถวถาวร** (ไม่ใช่ลบแถวแบบ comment retention)
 
-**ประเด็น**: `auth.login.failure` เก็บ **email ที่พยายาม login** ไว้ในคอลัมน์ `actor` — เป็นข้อมูลส่วนบุคคลชิ้นเดียวในตารางนี้
+- แถว audit **ไม่ถูกลบเลย** — เป็นหลักฐานที่ค้ำ copyright gate ข้อพิพาทลิขสิทธิ์โผล่ได้หลังหลายปี
+- หลัง **90 วัน** → ล้างเฉพาะ `actor` ของ `auth.login.failure` (email ที่คนพิมพ์เข้ามา อาจไม่ใช่ user เราด้วยซ้ำ) แทนด้วย `[anonymized]`
+- action อื่น `actor` เป็น user id ภายใน ไม่ใช่ PII และจำเป็นต่อการระบุผู้กระทำ → ไม่แตะ
 
-- [ ] ตัดสินใจว่าจะเก็บนานเท่าไหร่ (คำแนะนำ: 12 เดือน ให้ตรงกับ comment retention)
+**รันยังไง**: `POST /api/audit-logs/retention/anonymize` (admin + CSRF, ไม่ต้อง step-up เพราะมีแต่ *ลด* ข้อมูลส่วนบุคคล)
 
-> เก็บไว้นาน = หลักฐานทางกฎหมายดี แต่ PDPA exposure สูงขึ้น — ต้องชั่งเอง
+- [ ] ตั้ง cron ให้รันอัตโนมัติ (ตอนนี้ manual — อยู่ในชุด cron ที่ defer ไว้ร่วมกับ metrics/comment sweep)
 
 ### 6.2 Sentiment model
 
