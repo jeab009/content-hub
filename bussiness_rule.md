@@ -22,7 +22,13 @@ Confirmed business rules only (not tech/design detail — see `makedown.md` for 
 ## Content Policy (confirmed 2026-07-16)
 
 - **Pillar ratio**: product 40% / drama 30% / comedy 30% — admin ยืนยันใช้ตามค่า recommend, ไม่ provisional แล้ว
-- **Posting cadence**: Facebook 7 โพสต์/สัปดาห์, YouTube 3 โพสต์/สัปดาห์ — ยืนยันแล้ว (TikTok/LINE จะกำหนดเมื่อเข้า Phase 5)
+- **Posting cadence**: Facebook 7 โพสต์/สัปดาห์, YouTube 3 โพสต์/สัปดาห์ — ยืนยันแล้ว. **TikTok 14/สัปดาห์, LINE OA 3/สัปดาห์** — ยืนยัน 2026-07-19 ตอนเข้า Phase 5 (TikTok = short-video volume ~2/วัน, LINE = broadcast ถี่มากกวน follower)
+
+## TikTok/LINE OA Publish (decided 2026-07-19, Phase 5)
+
+- **วิธี publish: mock adapter + manual-external-record** — ไม่ทำ live integration. เหตุผล: ไม่มี API credential จริง, TikTok Content Posting API ต้อง app audit, LINE Messaging API เป็น broadcast ไม่ใช่ feed post, และ FB/YT live path เองก็ verify แค่ mock
+- Primary path: admin โพสต์เองบน platform จริง → บันทึก `external_post_id` + URL เข้า Content Hub (reuse posted_unconfirmed "Mark posted" flow) → ใช้ track + แนบ metric (revenue manual อยู่แล้ว)
+- Live adapter path ship แบบ flagged ไม่ verify (posture เดียวกับ FB/YT) — revisit เมื่อมี cred จริง
 
 ## Budget/Timeline (decided 2026-07-16)
 
