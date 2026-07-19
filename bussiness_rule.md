@@ -61,6 +61,24 @@ Confirmed business rules only (not tech/design detail — see `makedown.md` for 
 - เก็บ requirement จากการใช้งานจริงระหว่าง Phase 2-5 → **ตัดสินใหม่ตอน Phase 5 จบ** ว่าคุ้มสร้างเป็น Phase 7 หรือไม่ (ดู pros/cons ใน suggestion.md)
 - ผลพวง: Meta App อยู่ branch Dev Mode ต่อได้ (ไม่ต้องขอ ads_management scope), `metric` table ไม่ต้อง split organic/paid ตอนนี้, ranking engine v1/v2 ใช้ organic signal เท่านั้นตามแผนเดิม
 
+## Commerce / Affiliate (decided 2026-07-20, Phase 6)
+
+ขอบเขตใหม่: ส่ง video เข้า Shopee, affiliate, ปักตะกร้า (product anchor) บน TikTok + Shopee
+
+- **Revenue model เดิมไม่แก้** — `Revenue = platform payout เท่านั้น` ยังคงเดิมทุกตัวอักษร. Affiliate/commerce เป็น **stream แยกคนละก้อน** ไม่ผสมกับ payout
+  - Dashboard แสดงแยกส่วน ไม่รวมยอดกัน
+  - **Ranking engine ไม่กิน commerce signal** (v1/v2 ใช้ payout + engagement + override ตามเดิม) — ถ้าจะให้กินต้องตัดสินใจใหม่ต่างหาก
+  - เหตุผล: รวมยอดแล้ว rollback ยาก และกระทบ ranking ที่เพิ่งเปิด v2 ไป
+- **ยังไม่มีสิทธิ์ API ใดๆ** (ยืนยัน 2026-07-20): ไม่ได้เป็น Shopee managed seller (ไม่มี KAM) และไม่ได้เป็น TikTok Shop Creator Affiliate
+  - → **posture เดียวกับ TikTok/LINE: mock adapter + manual record** เป็น path หลัก
+  - live path เขียนแบบ flagged ไม่ verify จนกว่าจะมีสิทธิ์จริง
+
+### สิ่งที่ต้องไปขอสิทธิ์เอง (ก่อน live)
+
+- **Shopee**: ต้องเป็น managed seller (มี Key Account Manager) → สมัคร partner ที่ `open.shopee.com` ได้ `partner_id` + `partner_key`
+- **TikTok Shop**: บัญชีต้องเป็น Creator Affiliate (มีไอคอน Showcase) แล้ว authorize partner
+- ข้อจำกัดที่รู้แล้ว: Shopee video ต้องยาว **10–60 วินาที**
+
 ## Ranking Engine v2 (enabled 2026-07-20)
 
 - **v2 เป็น engine เริ่มต้นแล้ว** (`RANKING_ENGINE` default = `v2`). ยืนยันโดย admin ตอนปิด Phase 5D หลัง BUG-P5-02 ถูกแก้ (score reads แยกตาม engine แล้ว) และ 5-factor panel ผ่าน visual QA
