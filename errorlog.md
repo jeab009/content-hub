@@ -73,6 +73,18 @@ Test failures / runtime errors found during build. Full root-cause detail lives 
 - **Phase 4B: QC APPROVED WITH CONDITIONS + QA CONDITIONAL** (2026-07-19). QC static: zero critical/major, API-contract fidelity all 7 methods exact, security/XSS/CSRF/React patterns clean, 3 UX-minor non-blocking (template select reset, erase last-page edge, explicit pageSize). QA: browser MCP tools not granted to the agent → did curl vs live stack + real jest (frontend 20/20 + backend comment 35/35) + source audit; all API contract/throttle/guards/escalation-dedup/erasure/filters clean; DOM-visual slice not driven (covered by QC static + the 4B dev's own in-browser verification). Only bug = BUG-QA-4B-01 (fixed).
 - **Phase 4 now closed end-to-end for the admin** (exit criteria 3 + UI halves of 4/6/8 met). QC 3 UX-minors carried forward (non-blocking).
 
+## Phase 5.0 gate + 5A backend (2026-07-19)
+
+| ID | Severity | Found by | Summary | Status |
+|---|---|---|---|---|
+| QA5A-OBS-1 | Low (docs) | QA | `comments.constants.ts` comment อ้าง "TikTok / LINE OA join in Phase 5" แต่ array เว้นไว้ถูกแล้ว (สอง platform นี้ไม่มี comment API — LINE broadcast ไม่มี thread เลย) | **Fixed** — เขียน comment ใหม่อธิบายว่าเข้า publish pipeline แล้วแต่ตั้งใจไม่เข้า comment list |
+| QA5A-OBS-2 | Low (docs) | QA | "golden regression" claim (v2 เลือก platform เดียวกับ v1) จริงเฉพาะ pillar ที่**ไม่มี** override history. Pillar ที่มี history จริง (comedy) v2 พลิกคำแนะนำได้ — `override_feedback` scope เป็น (pillar, platform) ไม่ใช่ per-content. ถูกต้องตาม design ไม่ใช่ defect | **Fixed** — เขียน caveat ลง golden test docblock ชัดเจนว่า invariant จริงคือ "v2 ไม่ drift เกินจาก signal ใหม่ที่ตั้งใจใช้" |
+
+- **Phase 5A: QC APPROVED (zero findings ทุกระดับ) + QA SIGNED OFF** (2026-07-19). 285→378 tests.
+- QC verify: v1 frozen จริง (tie-break split ถูก, v1 service+spec ไม่ถูกแตะ, FB=0/YT=1 คงเดิม), v2 math sound (weights 1.0, ไม่มี NaN/div-by-zero, min-sample 5, counts ไม่ double-count), manual-external ปิดครบ, PDPA safe เชิงโครงสร้าง (`groupBy` — raw author/text ไม่เข้า Node memory), CSV injection escape `= + - @ \t \r` + RFC 4180
+- QA verify (adversarial, live stack): inject `wasOverride`/`publishMethod` ใน body → 400 forbidNonWhitelisted; **4 concurrent duplicate → 1 row เท่านั้น**; copyright gate ทน DB tampering 3 ชั้น (แก้ SQL ตรงๆ ยัง 409); **PDPA grep เอง 18 ค่าจาก Postgres → 0 leak**; CSV injection `=cmd|' /C calc'!A1` → defang เป็น `'=cmd...` + quote doubling, Python csv parse ได้ 2 แถวถูกต้อง; v1 default 2 platform/4 factor, v2 4 platform/5 factor + neutral 0.5 เมื่อ sample ต่ำ; tiktok/line_oa mock publish ผ่าน end-to-end; seed idempotent; **0 ครั้งของ HTTP 500 ตลอด session**
+- **Boot-safety guard (positive finding)**: ตั้ง `PUBLISHER_IMPL_TIKTOK=live` ใน NODE_ENV=development → app **ปฏิเสธ boot เลย** ("Refusing to boot: ... resolved to a real publisher implementation while NODE_ENV=development"). กัน live publish หลุดนอก production
+
 ## Carry-forward to Phase 2 kickoff (from Bug Fixer close-out, 2026-07-16)
 
 - QC review + QA baseline ของ Phase 2 WIP commits ก่อนเขียนโค้ดใหม่ — migration `20260716054701_phase2_publish_cms_ranking` ถูก apply ใน demo DB แล้ว ต้อง treat schema เป็น already-live

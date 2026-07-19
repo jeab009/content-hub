@@ -1,8 +1,11 @@
 import { CommentPriority, Platform, PostStatus } from '@prisma/client';
 
 /**
- * Platforms whose comments can be pulled via an API adapter (FB + YouTube
- * this phase). TikTok / LINE OA join in Phase 5. Mirrors metrics.constants
+ * Platforms whose comments can be pulled via an API adapter: Facebook and
+ * YouTube only. TikTok and LINE OA joined the PUBLISH pipeline in Phase 5 but
+ * deliberately stay out of this list — neither exposes a usable comment API
+ * (LINE OA broadcasts have no comment thread at all), so their adapters
+ * declare fetchComments/replyComment unsupported. Mirrors metrics.constants
  * API_CAPABLE_PLATFORMS so ingestion only ever reaches an implemented adapter.
  */
 export const COMMENT_API_CAPABLE_PLATFORMS: readonly Platform[] = [

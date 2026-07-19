@@ -157,6 +157,15 @@ describe('RankingEngineV2Service', () => {
  * v2 must still recommend the SAME platform v1 does, considering only the two
  * platforms v1 knew about. If this ever fails, v2 has changed an existing
  * recommendation for a reason unrelated to the new data it was built to use.
+ *
+ * SCOPE OF THIS GUARANTEE (QA5A-OBS-2 — do not over-read it): it holds only
+ * for content in a pillar with NO override history, which is what this harness
+ * builds. For a pillar that HAS accumulated overrides, v2 can and will flip the
+ * recommendation away from v1 — `override_feedback` is scoped to
+ * (pillar, platform), so every override recorded in that pillar moves the
+ * score. That flip is the factor working as designed, NOT a regression. The
+ * invariant this test actually protects is: "v2 introduces no drift beyond the
+ * new signals it was built to consume."
  */
 describe('v1 → v2 golden regression (legacy FB/YT content, no history)', () => {
   it('v2 recommends the same platform as v1 across the legacy platform set', async () => {
