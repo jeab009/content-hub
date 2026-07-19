@@ -85,6 +85,19 @@ Test failures / runtime errors found during build. Full root-cause detail lives 
 - QA verify (adversarial, live stack): inject `wasOverride`/`publishMethod` ใน body → 400 forbidNonWhitelisted; **4 concurrent duplicate → 1 row เท่านั้น**; copyright gate ทน DB tampering 3 ชั้น (แก้ SQL ตรงๆ ยัง 409); **PDPA grep เอง 18 ค่าจาก Postgres → 0 leak**; CSV injection `=cmd|' /C calc'!A1` → defang เป็น `'=cmd...` + quote doubling, Python csv parse ได้ 2 แถวถูกต้อง; v1 default 2 platform/4 factor, v2 4 platform/5 factor + neutral 0.5 เมื่อ sample ต่ำ; tiktok/line_oa mock publish ผ่าน end-to-end; seed idempotent; **0 ครั้งของ HTTP 500 ตลอด session**
 - **Boot-safety guard (positive finding)**: ตั้ง `PUBLISHER_IMPL_TIKTOK=live` ใน NODE_ENV=development → app **ปฏิเสธ boot เลย** ("Refusing to boot: ... resolved to a real publisher implementation while NODE_ENV=development"). กัน live publish หลุดนอก production
 
+## Phase 5B Frontend (2026-07-19)
+
+| ID | Severity | Found by | Summary | Status |
+|---|---|---|---|---|
+| QC5B-M1 | Major | QC (static) | `COMMENT_PLATFORMS` ขยายเป็น 4 platform พร้อม comment อ้างว่า "every adapter now implements fetchComments" — **ผิด**. Backend `COMMENT_API_CAPABLE_PLATFORMS` ยังเป็น `[facebook, youtube]` ตั้งใจ; TikTok/LINE adapter reject `fetchComments` ตรงๆ (LINE broadcast ไม่มี thread). ผล: filter dropdown เสนอ tiktok/line ที่ได้ผลว่างเสมอ → สื่อผิดว่า "ไม่มี comment" แทน "ไม่รองรับ" | **Fixed** — revert เป็น `[facebook, youtube]` + เขียน comment ใหม่อธิบายว่าทำไมตั้งใจไม่ใส่ |
+| QA5B-OBS-1 | Low | QA | manual-external modal เข้าถึงได้จาก `/scheduler` เท่านั้น ไม่มีใน `/posts` — ดูตั้งใจ (posts เป็นหน้า log/report) แต่ควรยืนยัน product intent | Open — product question |
+| QA5B-OBS-2 | Low (cosmetic) | QA | contentId ที่ไม่ใช่ UUID บน revenue drill-down → backend 400 (ParseUUIDPipe) ไม่ใช่ 404 → frontend แสดง "Failed to load" แทน "does not exist". ไม่ crash, ไม่ค้าง spinner | Open — cosmetic |
+
+- **Phase 5B: QC REJECTED → แก้ → APPROVED + QA SIGNED OFF** (2026-07-19). frontend 44→78 tests.
+- QC verify: API contract ตรง backend เป๊ะทุกจุด (RecordManualExternal DTO, ReportQuery filters, revenue drilldown, v2 reasoning), manual-record modal **ไม่ส่ง server-computed field เลย** (wasOverride/recommendedPlatform/publishMethod/status), 401/403/429 แยก branch ถูก, `toAssetPlatform` เป็น map จริงครบ 4 platform (ปิด bug แฝง `line` vs `line_oa`), neutral-vs-computed-0.5 implement ถูก
+- QA verify (curl + source audit): wrong pw 401 (เก็บ field อื่นไว้), copyright 409 vs duplicate 409 **ข้อความต่างกันชัด**, override 201 + wasOverride server-computed, throttle 429, cadence 4 platform (TikTok 14/LINE 3), **เจอทั้ง neutral case จริง** (`below_min_sample_size`, sampleSize 0) **และ computed-0.5 จริง** (awayRate==towardRate==0.2778 ไม่ถูก label neutral) — ยืนยัน implement ถูก, CSV 3 ไฟล์ header ถูก + comment-summary aggregate-only + CSV injection defang, ไม่มี blank label
+- **ข้อจำกัดสำคัญ**: browser tools ไม่ available ทั้ง 4B และ 5B QA → **ยังไม่มีใครเห็น UI รันจริงด้วยตา** (pixel rendering, click-driven modal, browser console). verify ด้วย contract + source + toolchain แทน ซึ่งจับ logic bug ได้ดีแต่ไม่ครอบ visual/interaction layer
+
 ## Carry-forward to Phase 2 kickoff (from Bug Fixer close-out, 2026-07-16)
 
 - QC review + QA baseline ของ Phase 2 WIP commits ก่อนเขียนโค้ดใหม่ — migration `20260716054701_phase2_publish_cms_ranking` ถูก apply ใน demo DB แล้ว ต้อง treat schema เป็น already-live

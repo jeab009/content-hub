@@ -14,12 +14,18 @@ import { isSlaBreached } from '@/lib/comment-logic';
  * labels since a Comment.platform IS a Prisma `Platform`.
  */
 
-/** Filter dropdown option sets — only the two platforms that produce comments. */
 /**
- * All four platforms as of Phase 5: every adapter now implements fetchComments,
- * and comments attach to manually-recorded TikTok/LINE posts too.
+ * Filter dropdown options — ONLY the platforms that actually produce comments.
+ *
+ * TikTok and LINE OA joined the publish pipeline in Phase 5 but deliberately
+ * stay out of this list: neither exposes a usable comment API (a LINE OA
+ * broadcast has no comment thread at all), so both adapters declare
+ * fetchComments unsupported. This mirrors the backend's
+ * COMMENT_API_CAPABLE_PLATFORMS — offering them here would render filters that
+ * can only ever come back empty, implying "no comments" rather than
+ * "not supported".
  */
-export const COMMENT_PLATFORMS: PostPlatform[] = ['facebook', 'youtube', 'tiktok', 'line'];
+export const COMMENT_PLATFORMS: PostPlatform[] = ['facebook', 'youtube'];
 export const COMMENT_SENTIMENTS: CommentSentiment[] = ['positive', 'negative', 'neutral'];
 export const COMMENT_PRIORITIES: CommentPriority[] = ['complaint', 'question', 'spam', 'general'];
 
