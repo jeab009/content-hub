@@ -15,7 +15,11 @@ import { isSlaBreached } from '@/lib/comment-logic';
  */
 
 /** Filter dropdown option sets — only the two platforms that produce comments. */
-export const COMMENT_PLATFORMS: PostPlatform[] = ['facebook', 'youtube'];
+/**
+ * All four platforms as of Phase 5: every adapter now implements fetchComments,
+ * and comments attach to manually-recorded TikTok/LINE posts too.
+ */
+export const COMMENT_PLATFORMS: PostPlatform[] = ['facebook', 'youtube', 'tiktok', 'line'];
 export const COMMENT_SENTIMENTS: CommentSentiment[] = ['positive', 'negative', 'neutral'];
 export const COMMENT_PRIORITIES: CommentPriority[] = ['complaint', 'question', 'spam', 'general'];
 

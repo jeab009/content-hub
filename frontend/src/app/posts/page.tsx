@@ -11,6 +11,7 @@ import {
 } from '@/lib/api-client';
 import { labels } from '@/lib/content-labels';
 import { AppHeader } from '@/components/AppHeader';
+import { ExportCsvButton } from '@/components/reports/ExportCsvButton';
 
 const POST_STATUSES: PostStatus[] = [
   'draft',
@@ -119,23 +120,34 @@ export default function PostsPage(): JSX.Element {
 
       <div className="d-flex justify-content-between align-items-center mb-4">
         <h1 className="h3 mb-0">Posts</h1>
-        <div>
-          <label htmlFor="filter-post-status" className="form-label small mb-1 me-2">
-            Status
-          </label>
-          <select
-            id="filter-post-status"
-            className="form-select form-select-sm d-inline-block w-auto"
-            value={statusFilter}
-            onChange={(e) => applyStatusFilter(e.target.value as PostStatus | '')}
-          >
-            <option value="">All statuses</option>
-            {POST_STATUSES.map((value) => (
-              <option key={value} value={value}>
-                {labels.postStatus(value)}
-              </option>
-            ))}
-          </select>
+        <div className="d-flex align-items-end gap-3">
+          <div>
+            <label htmlFor="filter-post-status" className="form-label small mb-1 me-2">
+              Status
+            </label>
+            <select
+              id="filter-post-status"
+              className="form-select form-select-sm d-inline-block w-auto"
+              value={statusFilter}
+              onChange={(e) => applyStatusFilter(e.target.value as PostStatus | '')}
+            >
+              <option value="">All statuses</option>
+              {POST_STATUSES.map((value) => (
+                <option key={value} value={value}>
+                  {labels.postStatus(value)}
+                </option>
+              ))}
+            </select>
+          </div>
+          {/* The override log is a report over posts, so it belongs here. The
+              status filter is deliberately NOT passed through: ReportQueryDto
+              accepts from/to/platform/contentId only, and sending `status`
+              would be rejected as an unknown field (400). */}
+          <ExportCsvButton
+            report="override-log"
+            label="Export override log (CSV)"
+            disabled={posts.length === 0}
+          />
         </div>
       </div>
 
@@ -157,6 +169,7 @@ export default function PostsPage(): JSX.Element {
                 <th scope="col">Content</th>
                 <th scope="col">Platform</th>
                 <th scope="col">Status</th>
+                <th scope="col">Method</th>
                 <th scope="col">Override</th>
                 <th scope="col">Posted at</th>
                 <th scope="col">External ID</th>
@@ -176,6 +189,11 @@ export default function PostsPage(): JSX.Element {
                     </span>
                   </td>
                   <td>
+                    <span className={`badge ${labels.publishMethodBadgeClass(post.publishMethod)}`}>
+                      {labels.publishMethod(post.publishMethod)}
+                    </span>
+                  </td>
+                  <td>
                     {post.wasOverride ? (
                       <span title={post.overrideReason ?? undefined}>
                         Yes{post.overrideReason ? ` — ${post.overrideReason}` : ''}
@@ -187,7 +205,15 @@ export default function PostsPage(): JSX.Element {
                   <td className="small">
                     {post.postedAt ? new Date(post.postedAt).toLocaleString() : '—'}
                   </td>
-                  <td className="small text-muted">{post.externalPostId ?? '—'}</td>
+                  <td className="small text-muted">
+                    {post.externalPostUrl ? (
+                      <a href={post.externalPostUrl} target="_blank" rel="noopener noreferrer">
+                        {post.externalPostId ?? 'View post'}
+                      </a>
+                    ) : (
+                      (post.externalPostId ?? '—')
+                    )}
+                  </td>
                   <td className="text-end">
                     {RETRYABLE_STATUSES.includes(post.status) && (
                       <button

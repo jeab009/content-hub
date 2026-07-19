@@ -218,6 +218,35 @@ export interface RankingReasoning {
   total: number;
 }
 
+/** Which engine produced a score. Mirrors Prisma `EngineVersion`. */
+export type EngineVersion = 'v1' | 'v2';
+
+/**
+ * The `input` payload of the v2-only `override_feedback` factor (Phase 5A.5).
+ * Every field is optional here because `input` is jsonb typed loosely on the
+ * wire and the factor emits two shapes: the full computed set, and a reduced
+ * NEUTRAL set when the sample is too small (`neutral: true` plus a `reason`
+ * of `below_min_sample_size` or `content_has_no_pillar`).
+ *
+ * The raw counts are the point of the factor — they are what makes the
+ * admin's own past override behaviour arguable rather than a black box.
+ */
+export interface OverrideFeedbackInput {
+  pillar?: string;
+  platform?: string;
+  sampleSize?: number;
+  recommendedCount?: number;
+  overriddenAwayCount?: number;
+  selectedAsOverrideCount?: number;
+  lookbackDays?: number;
+  minSampleSize?: number;
+  awayRate?: number;
+  towardRate?: number;
+  normalizer?: number;
+  neutral?: boolean;
+  reason?: string;
+}
+
 export interface RankingScore {
   id: string;
   contentId: string;
@@ -262,6 +291,13 @@ export interface SchedulerOverview {
   readyContents: ReadyContentOverview[];
 }
 
+/**
+ * How a post reached the platform (Prisma `PublishMethod`, Phase 5A):
+ * `adapter` = dispatched by Content Hub, `manual_external` = the admin posted
+ * natively and recorded it here.
+ */
+export type PublishMethod = 'adapter' | 'manual_external';
+
 export interface Post {
   id: string;
   contentId: string;
@@ -274,6 +310,8 @@ export interface Post {
   rankingScoreId: string | null;
   priorityScore: number | null;
   externalPostId: string | null;
+  externalPostUrl: string | null;
+  publishMethod: PublishMethod;
   executedBy: string | null;
   scheduledAt: string | null;
   postedAt: string | null;
@@ -290,6 +328,30 @@ export interface Post {
 export interface CreatePostInput {
   contentId: string;
   platform: AssetPlatform;
+  password: string;
+  overrideReason?: string;
+}
+
+/**
+ * Body of POST /api/posts/manual-external (Phase 5A.3) — the admin already
+ * published natively on the platform and is recording it here so the post
+ * becomes a first-class tracked entity.
+ *
+ * Mirrors RecordManualExternalDto field-for-field. Like CreatePostInput it
+ * deliberately omits `wasOverride`, `recommendedPlatform`, `status` and
+ * `publishMethod`: the backend computes all four server-side, and its
+ * ValidationPipe (forbidNonWhitelisted) 400s any request carrying them —
+ * ranking v2's override_feedback factor learns from these rows, so a
+ * client-supplied override fact would be a way to quietly train the engine.
+ *
+ * `externalPostUrl` is optional because not every platform has a permalink:
+ * a LINE OA broadcast has a message id but no addressable public URL.
+ */
+export interface RecordManualExternalInput {
+  contentId: string;
+  platform: AssetPlatform;
+  externalPostId: string;
+  externalPostUrl?: string;
   password: string;
   overrideReason?: string;
 }
@@ -379,6 +441,68 @@ export interface DashboardRevenue {
   totalRevenue: number;
   byContent: RevenueByContentItem[];
   byPlatform: PlatformBreakdownItem[];
+}
+
+/**
+ * One published post inside a content's revenue drill-down (Phase 5A.8).
+ * Carries `publishMethod` + the external id/URL so a manually-recorded
+ * TikTok/LINE post is visibly distinguishable from an adapter-published one.
+ */
+export interface RevenueByPostItem {
+  postId: string;
+  platform: PostPlatform;
+  publishMethod: PublishMethod;
+  externalPostId: string | null;
+  externalPostUrl: string | null;
+  postedAt: string | null;
+  reach: number;
+  engagement: number;
+  revenue: number;
+  metricSource: MetricSource | null;
+  lastCollectedAt: string | null;
+}
+
+/** Matches ContentRevenueDrilldownDto — one content split by platform, post, and day. */
+export interface ContentRevenueDrilldown {
+  generatedAt: string;
+  contentId: string;
+  title: string;
+  type: ContentType;
+  contentPillar: ContentPillar | null;
+  totalRevenue: number;
+  totals: { reach: number; engagement: number; revenue: number; posts: number };
+  byPlatform: PlatformBreakdownItem[];
+  byPost: RevenueByPostItem[];
+  trend: TrendPoint[];
+}
+
+// --- Reports (Phase 5A.6). CSV exports are admin-only GETs returning
+// `text/csv` with Content-Disposition: attachment, and carry NO CSRF header
+// (read-only convention, same as the dashboard reads). They are consumed as
+// plain links rather than fetch+blob: the session cookie is SameSite=Lax, so
+// a top-level navigation to the backend origin still carries it, and the
+// browser handles the download natively. ---
+
+/** Only the filters ReportQueryDto accepts — anything else 400s. */
+export interface ReportQuery {
+  /** ISO-8601 date bounding the start of the reporting period. */
+  from?: string;
+  /** ISO-8601 date bounding the end of the reporting period. */
+  to?: string;
+  platform?: AssetPlatform;
+  contentId?: string;
+}
+
+export type ReportName = 'revenue' | 'override-log' | 'comment-summary';
+
+function buildReportQuery(query: ReportQuery = {}): string {
+  const params = new URLSearchParams();
+  if (query.from) params.set('from', query.from);
+  if (query.to) params.set('to', query.to);
+  if (query.platform) params.set('platform', query.platform);
+  if (query.contentId) params.set('contentId', query.contentId);
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
 }
 
 // --- Comments (Phase 4) domain types. String unions mirror the backend
@@ -578,6 +702,18 @@ export const apiClient = {
   createPost: (body: CreatePostInput, csrfToken: string) =>
     request<Post>('/api/posts', { method: 'POST', body, csrfToken }),
 
+  /**
+   * Record a post the admin already published natively on the platform
+   * (Phase 5A.3 — the delivered TikTok/LINE OA path). 201 on success.
+   *
+   * Errors worth handling distinctly at the call site: 400 validation,
+   * 401 wrong step-up password (retry in-modal), 403 not an admin,
+   * 409 duplicate active post OR the content failed the copyright gate,
+   * 429 throttled (5 attempts / 15 min, same limit as login).
+   */
+  recordManualExternalPost: (body: RecordManualExternalInput, csrfToken: string) =>
+    request<Post>('/api/posts/manual-external', { method: 'POST', body, csrfToken }),
+
   /** Retry a draft/failed post (posted_unconfirmed is NOT retryable). */
   publishPost: (id: string, password: string, csrfToken: string) =>
     request<Post>(`/api/posts/${id}/publish`, {
@@ -622,6 +758,21 @@ export const apiClient = {
   getDashboardOverview: () => request<DashboardOverview>('/api/dashboard/overview'),
 
   getDashboardRevenue: () => request<DashboardRevenue>('/api/dashboard/revenue'),
+
+  /** Per-content revenue drill-down (Phase 5A.8) — by platform, by post, by day. */
+  getContentRevenue: (contentId: string) =>
+    request<ContentRevenueDrilldown>(`/api/dashboard/revenue/${contentId}`),
+
+  // --- Report export URLs (Phase 5A.6) ---
+
+  /**
+   * Absolute URL of a CSV report. Returned as a URL rather than fetched
+   * because these are attachment downloads: rendering it as a link lets the
+   * browser save the file with the server's filename, and the SameSite=Lax
+   * session cookie rides along on the top-level navigation.
+   */
+  reportCsvUrl: (report: ReportName, query?: ReportQuery) =>
+    `${API_BASE_URL}/api/reports/${report}.csv${buildReportQuery(query)}`,
 
   // --- Comments endpoints (Phase 4B). Reply + purge carry step-up password +
   // CSRF; sync + ack carry CSRF; list + templates + escalations are reads. ---

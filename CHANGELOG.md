@@ -3,6 +3,71 @@
 > Note: Phases 2–4 were tracked in `docs/phase*-*.md` rather than here; this
 > file resumes at Phase 5.
 
+## Phase 5B — Multi-platform frontend, ranking-v2 reasoning UI, exports (2026-07-19)
+
+Frontend-only pass against the frozen 5A contract. No backend file changed.
+Live adapters + PDF (5C) remain out of scope.
+
+### Added
+
+- **Manual-external record modal**
+  (`components/publish/ManualExternalRecordModal.tsx`): platform picker over all
+  four platforms, external post id, optional URL, override reason (required and
+  only shown when the chosen platform differs from the recommendation), and
+  step-up password. Mirrors the existing step-up modals — a 401 is recovered
+  **in** the modal (error shown, password cleared, every other field preserved),
+  while 400 / 403 / 409 / 429 each surface a distinct message. Shows the
+  recommended platform and its score breakdown so an override is a visible,
+  informed choice. Reachable per ready content from `/scheduler`.
+- **Revenue drill-down** at `/dashboard/revenue/[contentId]`: totals, by
+  platform, by post, and a trend chart reusing the existing `TrendChart`.
+  Linked from each row of the dashboard's "Revenue by content" table.
+- **CSV export buttons** (`components/reports/ExportCsvButton.tsx`): revenue on
+  the dashboard and on the drill-down (scoped to that content via `contentId`),
+  override log on `/posts`, comment summary on `/comments` (forwarding the
+  platform filter). Rendered as anchors, not fetch+blob — the endpoints already
+  return `Content-Disposition: attachment` and the session cookie is
+  `SameSite=Lax`, so the browser downloads them natively. Disabled state is a
+  real `<button disabled>` so it stays focusable and announced.
+- **`lib/ranking-reasoning.ts`**: pure formatting for the v2 `override_feedback`
+  factor — raw decision counts, both rates, and an explicit NEUTRAL callout that
+  trusts the engine's `neutral` flag rather than inferring from a 0.5 value
+  (a *computed* 0.5 is a real balanced signal, and mislabelling it would be a
+  lie about how the score was reached).
+- **api-client**: `recordManualExternalPost`, `getContentRevenue`,
+  `reportCsvUrl`; types `PublishMethod`, `EngineVersion`, `RecordManualExternalInput`,
+  `OverrideFeedbackInput`, `RevenueByPostItem`, `ContentRevenueDrilldown`,
+  `ReportQuery`; `externalPostUrl` + `publishMethod` added to `Post`.
+- 34 new jest tests (44 → 78): manual-record enable/validation, override-reason-
+  required-when-overriding, the `line`/`line_oa` enum bridge, four-platform label
+  coverage, and `override_feedback` formatting including both neutral reasons.
+
+### Changed
+
+- **All four platforms across the UI**: `/scheduler` publishes to any platform
+  with a connected account (was Facebook/YouTube only) and renders all four
+  cadence cards; `/posts` gains a "Method" column (Dispatched / Recorded
+  manually) and links the external id to its permalink when one exists.
+- **`ScoreReasoning`** extended (not duplicated) for v2's fifth factor, plus an
+  engine badge (`Engine v1 · 4 factors` / `Engine v2 · 5 factors`) so the admin
+  can tell which engine produced a score.
+- **Platform labels** dropped their `(Phase 5)` suffix now that TikTok and LINE
+  OA ship. TikTok/LINE carry a hint that manual recording is their normal path;
+  the ordinary publish path is **not** blocked for them, since the backend
+  registers mock adapters that dispatch.
+- `COMMENT_PLATFORMS` widened to all four — every adapter now implements
+  `fetchComments`, and comments attach to manually-recorded posts too.
+
+### Notes
+
+- `toAssetPlatform` was added as a real map rather than a cast: the two platform
+  enums disagree on LINE (`line` vs `line_oa`), so a cast would silently produce
+  a value that every `AssetPlatform`-keyed lookup misses.
+- Report filters are limited to what `ReportQueryDto` accepts
+  (`from`/`to`/`platform`/`contentId`). The posts-page status filter is
+  deliberately *not* forwarded — the backend 400s unknown query fields
+  (verified).
+
 ## Phase 5.0 + 5A — Multi-platform backend, ranking v2, CSV export (2026-07-19)
 
 Backend-only pass. Frontend (5B) and live adapters/PDF (5C) are NOT in this

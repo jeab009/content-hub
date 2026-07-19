@@ -13,19 +13,32 @@ import {
   type ReadyContentOverview,
   type SchedulerOverview,
 } from '@/lib/api-client';
-import { labels } from '@/lib/content-labels';
-import { needsRanking, recommendedScore } from '@/lib/publish-logic';
+import { ASSET_PLATFORMS, labels } from '@/lib/content-labels';
+import {
+  isManualRecordPlatform,
+  needsRanking,
+  recommendedScore,
+  toAssetPlatform,
+} from '@/lib/publish-logic';
 import { AppHeader } from '@/components/AppHeader';
 import { PublishConfirmModal } from '@/components/publish/PublishConfirmModal';
+import { ManualExternalRecordModal } from '@/components/publish/ManualExternalRecordModal';
 
-/** The only platforms with a live publish adapter (Phase 2 = FB + YouTube). */
-const PUBLISHABLE_PLATFORMS: AssetPlatform[] = ['facebook', 'youtube'];
+/**
+ * Platforms the publish pipeline covers. Phase 5A registered mock TikTok and
+ * LINE OA adapters, so all four dispatch — but dispatch still requires a
+ * connected account, which is why this list is intersected with the admin's
+ * connected accounts below rather than used directly.
+ */
+const PUBLISHABLE_PLATFORMS: AssetPlatform[] = ASSET_PLATFORMS;
 
 interface PublishTarget {
   content: ReadyContentOverview;
   /** Full score rows (with reasoning) fetched on demand for the modal. */
   scores: RankingScore[];
 }
+
+type ModalTarget = { kind: 'publish' | 'manual-record' } & PublishTarget;
 
 export default function SchedulerPage(): JSX.Element {
   const router = useRouter();
@@ -36,7 +49,7 @@ export default function SchedulerPage(): JSX.Element {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rankingContentId, setRankingContentId] = useState<string | null>(null);
-  const [publishTarget, setPublishTarget] = useState<PublishTarget | null>(null);
+  const [modalTarget, setModalTarget] = useState<ModalTarget | null>(null);
 
   const loadOverview = useCallback(async () => {
     try {
@@ -59,12 +72,13 @@ export default function SchedulerPage(): JSX.Element {
       ]);
       setUser(currentUser);
       setCsrfToken(csrf.csrfToken);
-      // Connected-account platform values coincide with AssetPlatform for the
-      // two publishable targets, so the narrowing filter doubles as the map.
+      // Connected accounts carry a `Platform`, not an `AssetPlatform` — the two
+      // enums disagree on LINE (`line` vs `line_oa`), so this must go through
+      // the real map rather than a cast.
       setConnectablePlatforms(
         accounts
           .filter((account) => account.status === 'connected')
-          .map((account) => account.platform as AssetPlatform)
+          .map((account) => toAssetPlatform(account.platform))
           .filter((platform) => PUBLISHABLE_PLATFORMS.includes(platform)),
       );
       await loadOverview();
@@ -97,11 +111,15 @@ export default function SchedulerPage(): JSX.Element {
     }
   }
 
-  async function handleOpenPublish(content: ReadyContentOverview): Promise<void> {
+  /** Both modals need the full score rows (with reasoning), so they share a loader. */
+  async function handleOpenModal(
+    kind: ModalTarget['kind'],
+    content: ReadyContentOverview,
+  ): Promise<void> {
     setError(null);
     try {
       const scores = await apiClient.getScores(content.contentId);
-      setPublishTarget({ content, scores });
+      setModalTarget({ kind, content, scores });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load scores.');
     }
@@ -148,10 +166,15 @@ export default function SchedulerPage(): JSX.Element {
           )}
 
           <h2 className="h5">Ready to publish</h2>
+          <p className="text-muted small">
+            TikTok and LINE OA have no verified live integration in this build — their normal path
+            is “Record external…”: post natively, then record it here so it becomes a tracked post.
+          </p>
           {connectablePlatforms.length === 0 && (
             <div className="alert alert-warning" role="alert">
-              No connected publishable account. Connect Facebook or YouTube in{' '}
-              <Link href="/settings">Settings</Link> to publish.
+              No connected publishable account, so direct dispatch is unavailable. Connect an
+              account in <Link href="/settings">Settings</Link>, or record an externally-published
+              post instead.
             </div>
           )}
           {overview.readyContents.length === 0 ? (
@@ -167,22 +190,34 @@ export default function SchedulerPage(): JSX.Element {
               rankingContentId={rankingContentId}
               canPublish={connectablePlatforms.length > 0}
               onRank={(content) => void handleRank(content)}
-              onPublish={(content) => void handleOpenPublish(content)}
+              onPublish={(content) => void handleOpenModal('publish', content)}
+              onRecordExternal={(content) => void handleOpenModal('manual-record', content)}
             />
           )}
         </>
       )}
 
-      {publishTarget && csrfToken && (
+      {modalTarget && csrfToken && modalTarget.kind === 'publish' && (
         <PublishConfirmModal
-          contentId={publishTarget.content.contentId}
-          title={publishTarget.content.title}
-          scores={publishTarget.scores}
-          recommendedPlatform={publishTarget.content.recommendedPlatform}
+          contentId={modalTarget.content.contentId}
+          title={modalTarget.content.title}
+          scores={modalTarget.scores}
+          recommendedPlatform={modalTarget.content.recommendedPlatform}
           connectablePlatforms={connectablePlatforms}
           csrfToken={csrfToken}
-          onClose={() => setPublishTarget(null)}
+          onClose={() => setModalTarget(null)}
           onPublished={() => void loadOverview()}
+        />
+      )}
+      {modalTarget && csrfToken && modalTarget.kind === 'manual-record' && (
+        <ManualExternalRecordModal
+          contentId={modalTarget.content.contentId}
+          title={modalTarget.content.title}
+          scores={modalTarget.scores}
+          recommendedPlatform={modalTarget.content.recommendedPlatform}
+          csrfToken={csrfToken}
+          onClose={() => setModalTarget(null)}
+          onRecorded={() => void loadOverview()}
         />
       )}
     </div>
@@ -207,6 +242,9 @@ function CadenceCard({ item }: { item: CadenceOverviewItem }): JSX.Element {
           {item.remaining} remaining · {new Date(item.periodStart).toLocaleDateString()} –{' '}
           {new Date(item.periodEnd).toLocaleDateString()}
         </p>
+        {isManualRecordPlatform(item.platform) && (
+          <p className="small text-muted mb-0 mt-1">Recorded manually — no live integration.</p>
+        )}
       </div>
     </div>
   );
@@ -218,6 +256,7 @@ interface ReadyContentTableProps {
   canPublish: boolean;
   onRank: (content: ReadyContentOverview) => void;
   onPublish: (content: ReadyContentOverview) => void;
+  onRecordExternal: (content: ReadyContentOverview) => void;
 }
 
 function ReadyContentTable(props: ReadyContentTableProps): JSX.Element {
@@ -282,11 +321,20 @@ function ReadyContentTable(props: ReadyContentTableProps): JSX.Element {
                   </button>
                   <button
                     type="button"
-                    className="btn btn-sm btn-primary"
+                    className="btn btn-sm btn-primary me-2"
                     disabled={!props.canPublish}
                     onClick={() => props.onPublish(content)}
                   >
                     Publish…
+                  </button>
+                  {/* Never disabled by connected accounts: recording an
+                      externally-published post needs no adapter and no token. */}
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-primary"
+                    onClick={() => props.onRecordExternal(content)}
+                  >
+                    Record external…
                   </button>
                 </td>
               </tr>

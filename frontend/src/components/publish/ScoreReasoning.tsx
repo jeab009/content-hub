@@ -1,7 +1,14 @@
 'use client';
 
-import type { RankingReasoning } from '@/lib/api-client';
+import type { RankingFactor, RankingReasoning } from '@/lib/api-client';
 import { labels } from '@/lib/content-labels';
+import {
+  isNeutralFactor,
+  isOverrideFeedbackFactor,
+  overrideFeedbackCounts,
+  overrideFeedbackInput,
+  summarizeOverrideFeedback,
+} from '@/lib/ranking-reasoning';
 
 interface ScoreReasoningProps {
   reasoning: RankingReasoning;
@@ -25,10 +32,21 @@ function inputSummary(input: RankingReasoning['factors'][number]['input']): stri
  * The explainability panel: renders each ranking factor with its weight,
  * normalized value, and contribution to the total so an admin can see WHY a
  * platform is recommended before publishing. The number alone is never enough.
+ *
+ * v2 (Phase 5) adds a fifth factor, `override_feedback`, which scores the
+ * admin's own past override behaviour back at them. A generic key:value dump
+ * is not good enough for that one — it gets a dedicated readable breakdown
+ * below the table, including an explicit NEUTRAL callout when the sample was
+ * too small for the signal to move the score.
  */
 export function ScoreReasoning({ reasoning }: ScoreReasoningProps): JSX.Element {
+  const overrideFactor = reasoning.factors.find(isOverrideFeedbackFactor) ?? null;
+
   return (
     <div>
+      <p className="mb-2">
+        <span className="badge bg-dark">{labels.engineVersion(reasoning.engineVersion)}</span>
+      </p>
       <div className="table-responsive">
         <table className="table table-sm align-middle mb-2">
           <thead>
@@ -68,6 +86,42 @@ export function ScoreReasoning({ reasoning }: ScoreReasoningProps): JSX.Element 
           </tfoot>
         </table>
       </div>
+
+      {overrideFactor && <OverrideFeedbackDetail factor={overrideFactor} />}
+    </div>
+  );
+}
+
+/**
+ * The human-readable rendering of `override_feedback`. Shows the raw decision
+ * counts, not just the derived value, so the admin can argue with the signal
+ * rather than take it on faith.
+ */
+function OverrideFeedbackDetail({ factor }: { factor: RankingFactor }): JSX.Element {
+  const input = overrideFeedbackInput(factor);
+  const neutral = isNeutralFactor(input);
+  const counts = overrideFeedbackCounts(input);
+
+  return (
+    <div className="border rounded p-2 mt-2">
+      <div className="d-flex flex-wrap align-items-center gap-2 mb-1">
+        <h4 className="h6 mb-0">Override feedback</h4>
+        {neutral && (
+          <span className="badge bg-warning text-dark">NEUTRAL — no effect on this score</span>
+        )}
+      </div>
+      <p className="small mb-2">{summarizeOverrideFeedback(input)}</p>
+      {counts.length === 0 ? (
+        <p className="small text-muted mb-0">No decision counts recorded for this factor.</p>
+      ) : (
+        <ul className="list-unstyled small mb-0">
+          {counts.map((row) => (
+            <li key={row.label}>
+              {row.label}: <span className="fw-semibold">{row.value}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

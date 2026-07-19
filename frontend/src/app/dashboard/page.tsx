@@ -15,6 +15,7 @@ import {
 import { formatCount, formatTHB, labels } from '@/lib/content-labels';
 import { AppHeader } from '@/components/AppHeader';
 import { TrendChart } from '@/components/dashboard/TrendChart';
+import { ExportCsvButton } from '@/components/reports/ExportCsvButton';
 
 export default function DashboardPage(): JSX.Element {
   const router = useRouter();
@@ -92,14 +93,21 @@ export default function DashboardPage(): JSX.Element {
             </span>
           )}
         </div>
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={isSyncing}
-          onClick={() => void handleSync()}
-        >
-          {isSyncing ? 'Syncing…' : 'Sync metrics'}
-        </button>
+        <div className="d-flex align-items-center gap-2">
+          <ExportCsvButton
+            report="revenue"
+            label="Export revenue (CSV)"
+            disabled={!revenue || revenue.byContent.length === 0}
+          />
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={isSyncing}
+            onClick={() => void handleSync()}
+          >
+            {isSyncing ? 'Syncing…' : 'Sync metrics'}
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -166,6 +174,9 @@ export default function DashboardPage(): JSX.Element {
                     <th scope="col" className="text-end">
                       Revenue
                     </th>
+                    <th scope="col" className="text-end">
+                      Detail
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -183,6 +194,14 @@ export default function DashboardPage(): JSX.Element {
                       <td className="text-end">{formatCount(row.reach)}</td>
                       <td className="text-end">{formatCount(row.engagement)}</td>
                       <td className="text-end fw-semibold">{formatTHB(row.revenue)}</td>
+                      <td className="text-end">
+                        <Link
+                          href={`/dashboard/revenue/${row.contentId}`}
+                          className="btn btn-sm btn-outline-primary"
+                        >
+                          Drill down
+                        </Link>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -192,6 +211,7 @@ export default function DashboardPage(): JSX.Element {
                       Total revenue
                     </th>
                     <td className="text-end fw-bold">{formatTHB(revenue.totalRevenue)}</td>
+                    <td />
                   </tr>
                 </tfoot>
               </table>

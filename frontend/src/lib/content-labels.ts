@@ -6,10 +6,12 @@ import type {
   ContentStatus,
   ContentType,
   CopyrightClearance,
+  EngineVersion,
   LicensingStatus,
   MetricSource,
   PostPlatform,
   PostStatus,
+  PublishMethod,
 } from '@/lib/api-client';
 
 export const CONTENT_TYPES: ContentType[] = ['video', 'image', 'text'];
@@ -35,8 +37,8 @@ const LICENSING_LABELS: Record<LicensingStatus, string> = {
 const PLATFORM_LABELS: Record<AssetPlatform, string> = {
   facebook: 'Facebook',
   youtube: 'YouTube',
-  tiktok: 'TikTok (Phase 5)',
-  line_oa: 'LINE OA (Phase 5)',
+  tiktok: 'TikTok',
+  line_oa: 'LINE OA',
 };
 
 const ASPECT_LABELS: Record<AspectRatio, string> = {
@@ -69,8 +71,26 @@ const CLEARANCE_BADGE: Record<CopyrightClearance, string> = {
 const POST_PLATFORM_LABELS: Record<PostPlatform, string> = {
   facebook: 'Facebook',
   youtube: 'YouTube',
-  tiktok: 'TikTok (Phase 5)',
-  line: 'LINE OA (Phase 5)',
+  tiktok: 'TikTok',
+  line: 'LINE OA',
+};
+
+/** How a post reached the platform (Prisma `PublishMethod`, Phase 5). */
+const PUBLISH_METHOD_LABELS: Record<PublishMethod, string> = {
+  adapter: 'Dispatched',
+  manual_external: 'Recorded manually',
+};
+
+/** Publish-method chip colour paired with PUBLISH_METHOD_LABELS — never colour alone. */
+const PUBLISH_METHOD_BADGE: Record<PublishMethod, string> = {
+  adapter: 'bg-info text-dark',
+  manual_external: 'bg-secondary',
+};
+
+/** Engine badge (v1/v2) so the admin knows which ranking engine produced a score. */
+const ENGINE_VERSION_LABELS: Record<EngineVersion, string> = {
+  v1: 'Engine v1 · 4 factors',
+  v2: 'Engine v2 · 5 factors',
 };
 
 const POST_STATUS_LABELS: Record<PostStatus, string> = {
@@ -153,4 +173,9 @@ export const labels = {
   paceBadgeClass: (value: CadencePaceStatus): string => PACE_BADGE[value],
   factor: (value: string): string => humanizeFactor(value),
   metricSource: (value: MetricSource): string => METRIC_SOURCE_LABELS[value],
+  publishMethod: (value: PublishMethod): string => PUBLISH_METHOD_LABELS[value],
+  publishMethodBadgeClass: (value: PublishMethod): string => PUBLISH_METHOD_BADGE[value],
+  /** Falls back to the raw string for an engine version this build predates. */
+  engineVersion: (value: string): string =>
+    ENGINE_VERSION_LABELS[value as EngineVersion] ?? `Engine ${value}`,
 };

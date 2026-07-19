@@ -23,6 +23,8 @@ import {
   COMMENT_SENTIMENTS,
   commentLabels,
 } from '@/lib/comment-labels';
+import { toAssetPlatform } from '@/lib/publish-logic';
+import { ExportCsvButton } from '@/components/reports/ExportCsvButton';
 import { canReply } from '@/lib/comment-logic';
 import { AppHeader } from '@/components/AppHeader';
 import { CommentReplyModal } from '@/components/comments/CommentReplyModal';
@@ -183,14 +185,27 @@ export default function CommentsPage(): JSX.Element {
 
       <div className="d-flex justify-content-between align-items-center mb-4">
         <h1 className="h3 mb-0">Comments</h1>
-        <button
-          type="button"
-          className="btn btn-outline-primary"
-          disabled={isSyncing}
-          onClick={() => void handleSync()}
-        >
-          {isSyncing ? 'Syncing…' : 'Sync comments'}
-        </button>
+        <div className="d-flex align-items-center gap-2">
+          {/* Aggregate-only and redacted server-side (PDPA): the CSV carries
+              counts per platform/sentiment/priority, never author or text.
+              Only the platform filter is forwarded — ReportQueryDto accepts
+              from/to/platform/contentId, so sentiment/priority/SLA would 400. */}
+          <ExportCsvButton
+            report="comment-summary"
+            query={
+              filters.platform ? { platform: toAssetPlatform(filters.platform) } : undefined
+            }
+            label="Export comment summary (CSV)"
+          />
+          <button
+            type="button"
+            className="btn btn-outline-primary"
+            disabled={isSyncing}
+            onClick={() => void handleSync()}
+          >
+            {isSyncing ? 'Syncing…' : 'Sync comments'}
+          </button>
+        </div>
       </div>
 
       {error && (
