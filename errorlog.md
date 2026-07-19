@@ -139,6 +139,37 @@ Test failures / runtime errors found during build. Full root-cause detail lives 
 
 **สิ่งที่ต้องบอกตรงๆ (เจอตอนทำ):** `auth.login.failure` เก็บ *email ที่ผู้ใช้พิมพ์เข้ามา* ไว้ในคอลัมน์ `actor` (ดู `auth.service.ts` — เจตนาเดิมคือสืบสวน brute-force). ถ้ามีคนพิมพ์ email ส่วนตัวผิดช่อง email นั้นจะถูกเก็บถาวร **นี่คือ personal data เพียงจุดเดียวในตารางนี้** และเป็นเหตุผลที่หนักที่สุดข้อเดียวที่สนับสนุนให้มี retention จริง — ยกให้ System Analyst ตัดสินคู่กับข้อ 2
 
+## Phase 5D — engine scoping, durable audit, first real visual QA (2026-07-19..20)
+
+**5D.1 backend** (`2f1aff1`): BUG-P5-02 แก้แล้ว (engine-scoped score reads), audit trail persist ลง DB. 378→401 tests.
+**5D.2 frontend + visual QA** (`8843be0` chart fix, error-mapping fix): QA5B-OBS-2 แก้แล้ว. 88→92 tests.
+
+### Visual QA pass — ครั้งแรกที่มีคนเห็น UI จริง (main thread, browser tools)
+QA subagent 2 รอบติดไม่มี browser tools และ**ปฏิเสธที่จะแกล้งทำ visual pass ด้วย source audit** (ถูกต้อง). main thread มี browser tools จึงทำเอง:
+
+| ตรวจ | ผล |
+|---|---|
+| BUG-P5-01 (chart label ถูกตัด) | **แก้แล้วยืนยันด้วยตา** — `THB 7.90`/`THB 3.95`/`THB 0.00` เต็ม, วันที่ `07-19` ไม่ตัด |
+| QA5B-OBS-2 (error mapping) | **ยืนยัน** — `/dashboard/revenue/not-a-uuid` → "That content id is not valid." |
+| QC5B-M1 (COMMENT_PLATFORMS) | **ยืนยัน** — Platform filter มีแค่ All/Facebook/YouTube |
+| BUG-QA-4B-01 (step-up copy) | **ยืนยัน** — "This action requires your password" (action-neutral) |
+| manual-external modal 401 | **ถูกต้อง** — error ใน modal, password ล้าง, post ID + override reason + platform **คงไว้ครบ** |
+| manual-external modal 409 duplicate | **ถูกต้อง** — ข้อความ backend เต็มพร้อม post id, password **ไม่**ถูกล้าง (ต่างจาก 401 ชัดเจน) |
+| override prompt | **ถูกต้อง** — เลือก platform ≠ recommended → ขึ้นเตือน + textarea เหตุผลบังคับ |
+| **v2 5-factor panel (ไม่เคยมีใครเห็น)** | **ถูกต้องครบ** — "Engine v2 · 5 factors", weights รวม 100%, contributions รวม = total (0.469) เป๊ะ, override_feedback มีทั้งแถวตารางและคำอธิบายภาษาคน + raw counts |
+| engine scoping ใน UI | **เห็นผล** — v1 แสดง 2 platform, v2 แสดง 4 platform, ไม่ปนกัน |
+| 4-platform labels | ไม่มี blank — TikTok/LINE OA/Facebook/YouTube ครบทุกหน้า |
+| Thai text + CSV-injection content | render เป็นข้อความเฉยๆ ปลอดภัย ไม่ mojibake |
+| a11y | badge มีทั้งสีและข้อความทุกจุด |
+| responsive | table wrapper `overflow-x:auto` scroll ได้ (body เกิน 3px เท่านั้น) |
+| console errors | **0 ทุกหน้า** |
+| audit rows | 8 แถว รอดข้าม v2 flip + restart 2 ครั้ง |
+| HTTP 500 | **0** |
+
+- **ไม่พบ bug ใหม่จาก visual pass** — ของที่แก้ไปก่อนหน้ายืนยันครบ, ของที่ยังไม่เคยเห็นทำงานถูก
+- `RANKING_ENGINE` คืนค่าเป็น `v1` แล้ว (ยืนยันด้วย printenv)
+- Test artifact: modal ทดสอบไม่ได้สร้าง post ใหม่ (โดน 409 duplicate จากรอบก่อน) — ไม่มีข้อมูลขยะเพิ่ม
+
 ## Carry-forward to Phase 2 kickoff (from Bug Fixer close-out, 2026-07-16)
 
 - QC review + QA baseline ของ Phase 2 WIP commits ก่อนเขียนโค้ดใหม่ — migration `20260716054701_phase2_publish_cms_ranking` ถูก apply ใน demo DB แล้ว ต้อง treat schema เป็น already-live
