@@ -12,6 +12,7 @@ import {
   type RevenueByPostItem,
 } from '@/lib/api-client';
 import { formatCount, formatTHB, labels } from '@/lib/content-labels';
+import { describeDrilldownError } from '@/lib/revenue-drilldown-logic';
 import { AppHeader } from '@/components/AppHeader';
 import { TrendChart } from '@/components/dashboard/TrendChart';
 import { ExportCsvButton } from '@/components/reports/ExportCsvButton';
@@ -45,11 +46,7 @@ export default function ContentRevenuePage(): JSX.Element {
         router.push('/login');
         return;
       }
-      setError(
-        err instanceof ApiError && err.status === 404
-          ? 'That content does not exist.'
-          : 'Failed to load the revenue drill-down.',
-      );
+      setError(describeDrilldownError(err));
     } finally {
       setIsLoading(false);
     }
