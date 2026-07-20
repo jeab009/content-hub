@@ -11,6 +11,8 @@ import { MockShopeeAdapter } from './adapters/mock-shopee.adapter';
 import { MockTikTokShopAdapter } from './adapters/mock-tiktok-shop.adapter';
 import { ShopeeAdapter } from './adapters/shopee.adapter';
 import { TikTokShopAdapter } from './adapters/tiktok-shop.adapter';
+import { CommerceCatalogController } from './commerce-catalog.controller';
+import { CommerceCatalogService } from './commerce-catalog.service';
 
 /**
  * Commerce / affiliate module (6A). The ThrottlerModule registration below
@@ -44,12 +46,14 @@ import { TikTokShopAdapter } from './adapters/tiktok-shop.adapter';
     ContentModule,
     PublishModule,
   ],
+  controllers: [CommerceCatalogController],
   providers: [
     CommerceAdapterRegistry,
     MockShopeeAdapter,
     MockTikTokShopAdapter,
     ShopeeAdapter,
     TikTokShopAdapter,
+    CommerceCatalogService,
     AdminGuard,
   ],
   exports: [CommerceAdapterRegistry],

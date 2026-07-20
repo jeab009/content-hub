@@ -15,6 +15,7 @@ import { MetricsModule } from './modules/metrics/metrics.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { CommentsModule } from './modules/comments/comments.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { CommerceModule } from './modules/commerce/commerce.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { ReportsModule } from './modules/reports/reports.module';
     DashboardModule,
     CommentsModule,
     ReportsModule,
+    CommerceModule,
   ],
 })
 export class AppModule {}
