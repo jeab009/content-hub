@@ -79,6 +79,18 @@ Confirmed business rules only (not tech/design detail — see `makedown.md` for 
 - **TikTok Shop**: บัญชีต้องเป็น Creator Affiliate (มีไอคอน Showcase) แล้ว authorize partner
 - ข้อจำกัดที่รู้แล้ว: Shopee video ต้องยาว **10–60 วินาที**
 
+## Third-party data connectors (decided 2026-07-20)
+
+- **ไม่ใช้ Supermetrics / Windsor.ai** — ประเมินแล้วไม่ต่อ (ไม่เคยเชื่อมต่อ เป็นการประเมินอย่างเดียว)
+- เหตุผล:
+  1. **แก้คนละปัญหา** — ทั้งคู่เป็น ETL ข้อมูล *ads/marketing* ทับกับระบบเราแค่ `fetchMetrics` (1 ใน 4 method ของ adapter) ไม่ทำ publish organic, copyright gate, ranking, comment inbox
+  2. **revenue model คนละทิศ** — เขาถนัด ad spend (เงินที่จ่าย) เราต้องการ creator payout (เงินที่ได้). ยังหาหลักฐานไม่ได้ว่าดึง `content_monetization_earnings` / YouTube partner revenue ได้
+  3. **ยังไม่มีข้อมูลให้ดูด** — FB/YT ยังเป็น `PUBLISHER_IMPL_*=mock` ไม่มี credential จริง
+  4. Ads/Paid เป็น B-lite อยู่แล้ว — ซื้อ ETL ads ควรเกิดหลังตัดสินใจทำ ads ในระบบ ไม่ใช่ก่อน
+- **กลับมาพิจารณาเมื่อ**: ใช้งานจริง 2-3 เดือนแล้วพบว่า TikTok/LINE กรอก metric มือเป็นภาระจริง หรือตัดสินใจทำ Ads เข้าระบบ (Phase 7)
+- **คำถามแรกที่ต้องถามเซลส์ตอนนั้น**: "ดึง creator payout ได้ไหม ไม่ใช่แค่ ad spend" — ถ้าไม่ได้ ไม่ตอบโจทย์แม้แต่ส่วนที่ทับกัน
+- ข้อเสียที่ชั่งแล้ว: ค่าใช้จ่ายประจำ (ตอนนี้ $0), ข้อมูลผ่าน vendor ต่างประเทศ (ต้องทำ DPA), ETL เป็นรอบไม่ realtime, vendor lock-in, และ**ไม่ลดภาระ Meta App Review อยู่ดี**ถ้าจะโพสต์
+
 ## Ranking Engine v2 (enabled 2026-07-20)
 
 - **v2 เป็น engine เริ่มต้นแล้ว** (`RANKING_ENGINE` default = `v2`). ยืนยันโดย admin ตอนปิด Phase 5D หลัง BUG-P5-02 ถูกแก้ (score reads แยกตาม engine แล้ว) และ 5-factor panel ผ่าน visual QA
