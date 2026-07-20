@@ -62,6 +62,7 @@
 
 ## Reference files
 
+- [global_config.md](global_config.md) — design tokens ที่ใช้ร่วมกัน (font, สี, ขนาด, spacing, chart constants, component patterns) ดึงจากโค้ดจริง
 - [SETUP-CHECKLIST.md](SETUP-CHECKLIST.md) — สิ่งที่ต้อง setup เอง (secrets, Meta/Google credentials, production infra, นโยบาย) พร้อมขั้นตอนละเอียด
 
 - [errorlog.md](errorlog.md) — test failures/error ที่เจอระหว่าง build
