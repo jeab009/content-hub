@@ -2,26 +2,27 @@ import { Module } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { RedisThrottlerStorageModule } from '../../common/throttler/redis-throttler-storage.module';
 import { RedisThrottlerStorageService } from '../../common/throttler/redis-throttler-storage.service';
+import { ContentModule } from '../content/content.module';
+import { PublishModule } from '../publish/publish.module';
+import { AdminGuard } from '../../common/guards/admin.guard';
 import { COMMERCE_STEP_UP_LIMIT, COMMERCE_STEP_UP_TTL_MS } from './commerce.constants';
+import { CommerceAdapterRegistry } from './adapters/commerce-adapter.registry';
+import { MockShopeeAdapter } from './adapters/mock-shopee.adapter';
+import { MockTikTokShopAdapter } from './adapters/mock-tiktok-shop.adapter';
+import { ShopeeAdapter } from './adapters/shopee.adapter';
+import { TikTokShopAdapter } from './adapters/tiktok-shop.adapter';
 
 /**
- * Phase 6.0 gate — module skeleton only. No controllers, no services, no
- * endpoints: 6.0 lands the schema and the separation proof, and 6A adds the
- * commerce surface.
+ * Commerce / affiliate module (6A). The ThrottlerModule registration below
+ * shipped empty at the 6.0 gate (see git history) for exactly the reason
+ * documented there: throttler config is per-importing-module in this
+ * codebase (same repeat registration in `publish.module.ts` and
+ * `comments.module.ts`), and the placement endpoint 6A.5 adds carries a
+ * password — an unthrottled password-carrying route is a credential oracle.
  *
- * It exists now for one reason: **the ThrottlerModule registration**.
- * Throttler config in this codebase is per-importing-module (see the same
- * repeat registration in `publish.module.ts` and `comments.module.ts` — it is
- * a dynamic module, so its providers do not cross module boundaries). The
- * placement endpoint 6A adds carries a password, and if the module were
- * created later, in the same change as that endpoint, the natural mistake is
- * to assume the throttler is inherited. It is not, and an unthrottled
- * password-carrying route is a credential oracle.
- *
- * Registering it here, empty, means 6A cannot ship that endpoint without a
- * rate limit already in place. QC MAJOR-2 / requirement 7: `commerce.constants`
- * already documented this registration as existing before the file did — the
- * comment is now true.
+ * Imports `ContentModule` (for `CopyrightGateService`, already exported) and
+ * `PublishModule` (for `StepUpAuthService`, already exported — no edit to
+ * `PublishModule` was needed; see phase6-system-analysis.md §5.1).
  *
  * Deliberately NOT imported here: MetricsModule, DashboardModule,
  * RankingModule. The ESLint zones in `.eslintrc.cjs` forbid it in both
@@ -40,6 +41,17 @@ import { COMMERCE_STEP_UP_LIMIT, COMMERCE_STEP_UP_TTL_MS } from './commerce.cons
       }),
       inject: [RedisThrottlerStorageService],
     }),
+    ContentModule,
+    PublishModule,
   ],
+  providers: [
+    CommerceAdapterRegistry,
+    MockShopeeAdapter,
+    MockTikTokShopAdapter,
+    ShopeeAdapter,
+    TikTokShopAdapter,
+    AdminGuard,
+  ],
+  exports: [CommerceAdapterRegistry],
 })
 export class CommerceModule {}

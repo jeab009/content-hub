@@ -90,7 +90,15 @@ export type AuditAction =
   // (action, createdAt), so a distinct action is queryable where a meta
   // discriminator is not, and it keeps commerce exports off any alert that
   // aggregates payout-report pulls.
-  | 'commerce_report_exported';
+  | 'commerce_report_exported'
+  // 6A.1 — a live commerce adapter method was invoked. Every live Shopee/
+  // TikTok Shop adapter method is a rejecting stub (Decision 5: no HTTP
+  // client this phase), and the WBS 6A.1 acceptance criterion is "enabling
+  // live without credentials fails cleanly and is audited" — this is that
+  // audit trail. `actor` is `'system:commerce-adapter'`, mirroring the
+  // existing `'system:token-refresh-job'` convention for a failure with no
+  // request-scoped user.
+  | 'commerce_adapter_unavailable';
 
 export type AuditResult = 'success' | 'failure';
 
