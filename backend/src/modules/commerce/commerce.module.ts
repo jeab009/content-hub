@@ -19,6 +19,8 @@ import { CommerceAnchorService } from './commerce-anchor.service';
 import { CommercePlacementService } from './commerce-placement.service';
 import { CommerceConversionController } from './commerce-conversion.controller';
 import { CommerceConversionService } from './commerce-conversion.service';
+import { CommerceSummaryController } from './commerce-summary.controller';
+import { CommerceReadService } from './commerce-read.service';
 
 /**
  * Commerce / affiliate module (6A). The ThrottlerModule registration below
@@ -57,6 +59,7 @@ import { CommerceConversionService } from './commerce-conversion.service';
     PostAnchorsController,
     CommercePlacementController,
     CommerceConversionController,
+    CommerceSummaryController,
   ],
   providers: [
     CommerceAdapterRegistry,
@@ -68,6 +71,7 @@ import { CommerceConversionService } from './commerce-conversion.service';
     CommerceAnchorService,
     CommercePlacementService,
     CommerceConversionService,
+    CommerceReadService,
     AdminGuard,
   ],
   exports: [CommerceAdapterRegistry],
