@@ -170,6 +170,22 @@ QA subagent 2 รอบติดไม่มี browser tools และ**ปฏ�
 - `RANKING_ENGINE` คืนค่าเป็น `v1` แล้ว (ยืนยันด้วย printenv)
 - Test artifact: modal ทดสอบไม่ได้สร้าง post ใหม่ (โดน 409 duplicate จากรอบก่อน) — ไม่มีข้อมูลขยะเพิ่ม
 
+## Phase 6.0 Commerce Schema & Separation Gate (2026-07-20)
+
+| ID | Severity | Found by | Summary | Status |
+|---|---|---|---|---|
+| BUG-P6-01 | High (process/data-loss) | QA (P6-OBS-2) → DevOps (DEVOPS-1) → Bug Fixer | `assertDisposableDatabase()` ใน `src/testing/e2e/e2e-database.ts` เช็คแค่ **hostname** (`localhost`/`127.0.0.1`/`postgres`) เพื่อตอบคำถามว่า DB "ทิ้งได้ไหม" — demo compose DB ชื่อ `content_hub` อยู่ host เดียวกับ CI DB เป๊ะ จึงผ่าน guard แล้วโดน `TRUNCATE ... CASCADE`. QA เสีย seeded user/content จริงระหว่างเทส (กู้ด้วย `npm run prisma:seed`) | **Fixed** `60931fb` — บังคับชื่อ DB ตรง `/(^\|_)e2e$/` + hatch `ALLOW_E2E_TRUNCATE=1` (ข้ามเช็คชื่อเท่านั้น ไม่ข้าม host). regression suite 10 เคสอยู่ใน unit suite (รันทุก jest ไม่ใช่เฉพาะ test:e2e) |
+| DEV-P6-01 | Medium (guard ตายเงียบ) | Developer (ระหว่างพิสูจน์ fail-first) | ESLint `no-restricted-imports` match **specifier string** ไม่ใช่ resolved path — glob `**/modules/metrics/**` จึงไม่เคยยิงกับ relative import (`../metrics/...`) ที่ทุกคนเขียนจริง → commerce separation zone ตายสนิททั้งสอง codebase | **Fixed** ใน `f0f5705` — ขยาย glob ครอบรูป relative |
+| DEV-P6-02 | Medium (test เป็น tautology) | Developer | banned-column test อ่านค่าจาก frozen literal → ยิงได้เฉพาะ *หลัง* คนเพิ่ม column ต้องห้ามเข้า allow-list แล้ว = พิสูจน์อะไรไม่ได้ | **Fixed** ใน `f0f5705` — scan live Prisma dmmf แทน |
+| P6-QA-1 | Low (doc) | QA + DevOps (ยืนยันตรงกัน) | `docs/phase6-system-analysis.md` เขียน "all three money-bearing tables" (SA-9) — จริงมี **2** (`commerce_products`, `commerce_conversions`) | **Fixed** `60931fb` — แก้ใน doc ทั้ง 2 จุด ลงวันที่กำกับ |
+| DEVOPS-2 | Low | DevOps | CI job `separation-e2e` ไม่มี redis service ต่างจาก job `backend` | **Resolved ไม่เพิ่ม redis** — e2e ไม่เคย boot Nest (`capture-baseline.ts` สร้าง service เองบน bare PrismaClient) หลักฐาน + เงื่อนไขที่ต้องกลับมาแก้ document บน CI job |
+| DEVOPS-3 | Info | DevOps | ไม่มี `/api/health` HTTP endpoint เลย (Docker healthcheck เป็น TCP อย่างเดียว) — pre-existing ไม่ใช่ regression ของ 6.0 | Open — carry-forward ก่อน cloud deploy |
+
+- **B1 = finding ที่สำคัญที่สุดของ analyst และเป็นของจริง**: `jest.config.js` เป็น `rootDir: 'src'` + `backend/test/` ว่างเปล่า → separation spec ทุกตัวที่ design ระบุให้วางใน `backend/test/` จะ **ไม่ถูก collect เลย** exit criteria จะรายงานเขียวทั้งที่ไม่เคยรัน. ย้ายไป `src/testing/separation/` แล้ว ยืนยัน 27 spec ถูกเก็บจริง
+- **fail-first ทำจริงทั้ง developer และ QA**: dev พังทุก guard แล้วดูแดงก่อน restore; QA ไม่เชื่อ evidence นั้น ทำซ้ำเอง 3 ตัว (CSV header freeze, boundary scan รวมเคส comment ที่ต้อง *ไม่* ยิง, Layer 1 เพิ่ม Prisma relation จริง + `prisma generate`) แล้วยืนยัน `git diff --stat` กลับมา byte-identical
+- QC APPROVED · QA SIGNED OFF (zero Critical/High) · DevOps DEPLOYED (demo/local, migration ไม่มี drift, ไม่มี commerce route = ถูกต้องสำหรับ gate) · Bug Fixer **CONTINUE LOOP → 6A**
+- tests 401 → **467 (45 suites)** + e2e 14/14 กับ Postgres จริง
+
 ## Carry-forward to Phase 2 kickoff (from Bug Fixer close-out, 2026-07-16)
 
 - QC review + QA baseline ของ Phase 2 WIP commits ก่อนเขียนโค้ดใหม่ — migration `20260716054701_phase2_publish_cms_ranking` ถูก apply ใน demo DB แล้ว ต้อง treat schema เป็น already-live
