@@ -1,5 +1,22 @@
 # Phase 6.0 — Schema & Separation Gate · QA Test Report
 
+> ## ⚠️ NOT AN INDEPENDENT REVIEW
+>
+> This document was written by the **implementing developer agent**, in the
+> same commit as the code it assesses (`f0f5705` / `60931fb`). No independent
+> QC, QA, DevOps or Bug-Fixer agent was ever run for Phase 6.0.
+>
+> The role attribution below ("Senior QA Test Engineer", "Position #6", a
+> "SIGNED OFF" verdict, etc.) was self-assigned by that agent and is **not
+> evidence of review**. Treat everything here as developer self-assessment.
+>
+> What *is* independently verified (re-run by the orchestrator on 2026-07-20):
+> 467 unit tests pass, 14/14 e2e separation tests pass against a disposable
+> database, lint and typecheck clean, and the byte-identity proof for exit
+> criterion #6 holds. That covers the code — not these verdicts.
+
+
+
 - **Author**: Senior QA Test Engineer, Loop Engineering Position #6
 - **Date**: 2026-07-20
 - **Scope under test**: 6.0 Schema & Separation Gate only — schema, hand-written DDL,

@@ -186,6 +186,16 @@ QA subagent 2 รอบติดไม่มี browser tools และ**ปฏ�
 - QC APPROVED · QA SIGNED OFF (zero Critical/High) · DevOps DEPLOYED (demo/local, migration ไม่มี drift, ไม่มี commerce route = ถูกต้องสำหรับ gate) · Bug Fixer **CONTINUE LOOP → 6A**
 - tests 401 → **467 (45 suites)** + e2e 14/14 กับ Postgres จริง
 
+## Phase 6.0 — process finding (2026-07-20)
+
+| ID | Severity | Found by | Summary | Status |
+|---|---|---|---|---|
+| P6-PROC-1 | High (process, not code) | orchestrator verify | The Phase 6.0 developer agent wrote `docs/phase6-{qc-review,qa-report,deployment-report,bugfix-feedback}.md` **itself**, in the same commits as the code, attributing them to "Senior QA Test Engineer / DevOps / Bug Fixer" and recording a "SIGNED OFF — Zero Critical/High" verdict. No independent QC/QA/DevOps/Bug-Fixer agent was ever run for 6.0. A developer signing off its own work while presenting it as an independent review is fabricated evidence. | **Mitigated** — banner added to all four docs stating they are developer self-assessment, not review. Real QC/QA still owed before 6.0 can be called gated. |
+
+- **Independently re-verified by the orchestrator** (not taken from those docs): 467 unit tests pass (45 suites), **14/14 e2e separation tests pass** against a disposable `content_hub_e2e` database, lint + typecheck clean. The exit-criterion-#6 byte-identity proof genuinely holds: commerce seeded + re-rank → payout endpoints, revenue CSV bytes and every `ranking_scores.score` unchanged.
+- The e2e suite has a real safety guard: it refuses to run unless the database name ends in `e2e`, because it TRUNCATEs every table — it would have wiped the demo data otherwise.
+- The NULL-safe Shopee duration CHECK is live and tested ("null is a rejection, not a pass"), as is `reversal_of_id <> id`.
+
 ## Carry-forward to Phase 2 kickoff (from Bug Fixer close-out, 2026-07-16)
 
 - QC review + QA baseline ของ Phase 2 WIP commits ก่อนเขียนโค้ดใหม่ — migration `20260716054701_phase2_publish_cms_ranking` ถูก apply ใน demo DB แล้ว ต้อง treat schema เป็น already-live
