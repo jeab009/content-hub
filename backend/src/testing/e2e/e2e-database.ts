@@ -45,6 +45,15 @@ const TRUNCATE_ORDER = [
   'commerce_placements',
   'commerce_products',
   'comments',
+  'comment_reply_templates',
+  'escalation_alerts',
+  // Found by the leftover check the moment it was implemented, and these two
+  // are the reason it was worth implementing: RankingFactorsService reads BOTH
+  // (`pillar_alignment` and `cadence_pressure`), and the payout fixture seeds
+  // neither — so whatever a previous run happened to leave behind was silently
+  // feeding the re-rank inside the byte-identity proof.
+  'pillar_ratio_policies',
+  'platform_cadence_targets',
   'metrics',
   'posts',
   'ranking_scores',
@@ -115,23 +124,30 @@ export function assertDisposableDatabase(
     );
   }
 
-  const override = env[E2E_TRUNCATE_OVERRIDE_ENV];
-  if (override === '1' || override === 'true') {
+  const dbName = databaseNameOf(url);
+  if (DISPOSABLE_DB_NAME.test(dbName)) {
     return url;
   }
 
-  const dbName = databaseNameOf(url);
-  if (!DISPOSABLE_DB_NAME.test(dbName)) {
-    throw new Error(
-      `Refusing to run the e2e suite against database "${dbName || '(unnamed)'}": its name does not ` +
-        'end in "e2e". This suite TRUNCATES every application table, including users, contents and ' +
-        'posts — running it against the Docker compose demo database erases the demo data. ' +
-        'Point DATABASE_URL at a disposable database whose name says so (e.g. content_hub_e2e), ' +
-        `or set ${E2E_TRUNCATE_OVERRIDE_ENV}=1 to override deliberately.`,
-    );
+  // QA-2: the override used to be a boolean checked BEFORE the name check, so
+  // `ALLOW_E2E_TRUNCATE=1` waved through `localhost/content_hub` — one env var
+  // away from wiping the demo database, which is the failure the name check
+  // exists to prevent. It now has to NAME the database it is willing to lose,
+  // so it cannot be set once and forgotten while DATABASE_URL moves underneath
+  // it.
+  const override = env[E2E_TRUNCATE_OVERRIDE_ENV];
+  if (override && override === dbName) {
+    return url;
   }
 
-  return url;
+  throw new Error(
+    `Refusing to run the e2e suite against database "${dbName || '(unnamed)'}": its name does not ` +
+      'end in "e2e". This suite TRUNCATES every application table, including users, contents and ' +
+      'posts — running it against the Docker compose demo database erases the demo data. ' +
+      'Point DATABASE_URL at a disposable database whose name says so (e.g. content_hub_e2e), ' +
+      `or set ${E2E_TRUNCATE_OVERRIDE_ENV}="${dbName}" to name the database you accept losing ` +
+      '(a bare "1" is deliberately not accepted).',
+  );
 }
 
 /** A connected client for the e2e suite. Callers must `$disconnect()`. */
@@ -151,6 +167,34 @@ export function createE2eClient(): PrismaClient {
 export async function resetDatabase(prisma: PrismaClient): Promise<void> {
   const tables = TRUNCATE_ORDER.map((table) => `"${table}"`).join(', ');
   await prisma.$executeRaw`${Prisma.raw(`TRUNCATE TABLE ${tables} RESTART IDENTITY CASCADE`)}`;
+
+  // The guard the TRUNCATE_ORDER docblock promises (QC MINOR-1: it was
+  // described but never implemented).
+  //
+  // Add a table in a later migration, forget to list it above, and every
+  // fixture silently inherits the previous run's rows — the byte-identity
+  // proof would then compare two dirty states and pass for the wrong reason.
+  // Asking the database which tables exist, rather than trusting the list,
+  // is the only version of this check that can catch its own omission.
+  const leftovers = await prisma.$queryRaw<Array<{ table_name: string; n: bigint }>>`
+    SELECT c.relname AS table_name, c.reltuples::bigint AS n
+    FROM pg_class c
+    JOIN pg_namespace ns ON ns.oid = c.relnamespace
+    WHERE ns.nspname = 'public'
+      AND c.relkind = 'r'
+      AND c.relname NOT LIKE '\\_prisma%'
+      AND c.relname <> ALL (${Prisma.sql`ARRAY[${Prisma.join(TRUNCATE_ORDER.map((t) => t))}]::text[]`})
+  `;
+
+  if (leftovers.length > 0) {
+    const names = leftovers.map((row) => row.table_name).sort();
+    throw new Error(
+      `resetDatabase truncated ${TRUNCATE_ORDER.length} tables but the schema also contains: ` +
+        `${names.join(', ')}. Add them to TRUNCATE_ORDER (children before parents) — an untruncated ` +
+        'table leaks rows between e2e runs, which makes the byte-identity proof compare two dirty ' +
+        'states and pass for the wrong reason.',
+    );
+  }
 }
 
 /**

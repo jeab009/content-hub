@@ -114,11 +114,21 @@ describe('Phase 6 exit #6 — payout and ranking are byte-identical with commerc
     expect(Buffer.compare(after.scores, baseline.scores)).toBe(0);
   });
 
-  it('no payout CSV byte mentions commerce, even with commerce rows present', () => {
+  it('no payout CSV byte mentions commerce, even with commerce rows present', async () => {
     // Cheap and specific: the CSV is the artefact most likely to grow a
     // "commission" column by accident, and the header freeze in the unit suite
     // only covers the literal — this covers the produced bytes.
-    const revenue = baseline.revenueCsv.toString('utf8');
+    //
+    // QC MAJOR-1: this used to read `baseline.revenueCsv`, captured in
+    // `beforeAll` BEFORE the commerce fixture was seeded — so a test whose
+    // whole point is "even with commerce rows present" was inspecting a
+    // zero-commerce database and could not have failed for its stated reason.
+    // Re-capture here: the previous test seeded commerce and nothing resets
+    // between tests, so this reads the post-seed state.
+    const withCommerce = await captureBaseline(prisma);
+    expect(await prisma.commerceConversion.count()).toBeGreaterThan(0);
+
+    const revenue = withCommerce.revenueCsv.toString('utf8');
     for (const token of ['commission', 'shopee', 'affiliate', 'gross_sales', 'orders_count']) {
       expect(revenue.toLowerCase()).not.toContain(token);
     }

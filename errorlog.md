@@ -215,6 +215,28 @@ The role→document mapping is stated identically in all of them, and the Develo
 - The e2e suite has a real safety guard: it refuses to run unless the database name ends in `e2e`, because it TRUNCATEs every table — it would have wiped the demo data otherwise.
 - The NULL-safe Shopee duration CHECK is live and tested ("null is a rejection, not a pass"), as is `reversal_of_id <> id`.
 
+## Phase 6.0 — real QC/QA pass (2026-07-20)
+
+First independent review of the gate (the earlier docs were developer self-assessment — P6-PROC-1). **QC: APPROVED WITH CONDITIONS. QA: SIGNED OFF.**
+
+**QA answered the question that mattered by attacking the claim, not reading it**: injected a commerce sum into `DashboardService.revenue()`, watched the byte-identity harness fail as it should (other 13 tests stayed green), reverted, and checksum-verified the tree unchanged. **The separation proof is genuine, not vacuous.** 13 adversarial URLs failed to defeat the truncation guard; 19 raw-SQL probes confirmed every CHECK including the NULL-duration rejection; enums verified via `pg_enum` in both databases.
+
+| ID | Severity | Found by | Summary | Status |
+|---|---|---|---|---|
+| QC-6.0-1 | Major | QC | Test titled "no payout CSV byte mentions commerce, **even with commerce rows present**" asserted against `baseline.revenueCsv`, captured before the seed — it inspected a zero-commerce DB and could not fail for its stated reason | **Fixed** — re-captures post-seed, asserts commerce rows exist first |
+| QC-6.0-2 | Major | QC | `commerce.module.ts` did not exist, though the handoff reported "CommerceModule skeleton" delivered and `commerce.constants.ts` documented "Registered by CommerceModule's OWN ThrottlerModule". Requirement 7 unmet | **Fixed** — module created with its own ThrottlerModule registration; the comment is now true |
+| QC-6.0-3 | Major | QC | Static boundary scan walked 4 directories while ESLint zones cover 9 — raw SQL naming a commerce table inside `publish/`, `content/`, `scheduler/`, `queue/`, `common/` was caught by **neither** layer | **Fixed** — scan widened to every module the lint zones cover |
+| QC-6.0-4 | Minor | QC | `TRUNCATE_ORDER` docblock promised "the row-count assertion in `resetDatabase`" — no such assertion existed | **Fixed** — implemented; **it found 4 real omissions on first run** (see below) |
+| QA-2 | Medium | QA | `ALLOW_E2E_TRUNCATE=1` was checked *before* the database-name check, so it accepted `localhost/content_hub` — one env var from wiping the demo DB, the exact failure the guard exists to prevent | **Fixed** — override must now NAME the database it accepts losing; a bare `1` is rejected. Old test encoded the hole; updated |
+| QA-1 | Medium | QA | `statement_ref` format enforced in **no** layer — regex correct but referenced only by its own test; `'John Smith'` inserts fine at DB level. Migration comment claims present-tense service enforcement | **Open — blocking prerequisite for 6A.7.** Migration is applied so its SQL comment cannot be edited (Prisma checksums it); the DB has only a length cap by design, on the assumption of a service guard that must land with the service |
+| QA-3 / QA-4 | Low | QA | Proof runs at service layer not HTTP (self-documented, 6A.10); backend healthcheck is a bare TCP connect, so "healthy" ≠ DB reachable (pre-existing, DevOps) | Open — deferred |
+
+**The leftover check earned itself immediately.** Implementing QC-6.0-4 revealed `comment_reply_templates`, `escalation_alerts`, `pillar_ratio_policies` and `platform_cadence_targets` were never truncated. The last two matter: `RankingFactorsService` reads both (`pillar_alignment`, `cadence_pressure`) and the payout fixture seeds neither — so whatever a previous run left behind was silently feeding the re-rank inside the byte-identity proof. A comment describing a guard that did not exist was hiding four real leaks.
+
+**Pattern worth naming (QC's observation):** *"the prose in this delivery occasionally runs ahead of the code — a guard described but not implemented, a module described but not created."* Same failure mode as P6-PROC-1: writing the claim instead of the thing. It matters more than usual here because the separation's durability depends on the next engineer trusting these comments.
+
+After fixes: **469 unit + 14 e2e tests pass**, lint + typecheck clean.
+
 ## Carry-forward to Phase 2 kickoff (from Bug Fixer close-out, 2026-07-16)
 
 - QC review + QA baseline ของ Phase 2 WIP commits ก่อนเขียนโค้ดใหม่ — migration `20260716054701_phase2_publish_cms_ranking` ถูก apply ใน demo DB แล้ว ต้อง treat schema เป็น already-live

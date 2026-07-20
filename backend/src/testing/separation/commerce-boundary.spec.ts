@@ -47,6 +47,20 @@ const PAYOUT_AND_RANKING_DIRS = [
   'src/modules/metrics',
   'src/modules/dashboard',
   'src/modules/reports',
+  // QC MAJOR-3: the scan used to stop after the four above, while
+  // `.eslintrc.cjs` argues the zones must be system-wide and covers nine path
+  // globs. A raw `$queryRaw` naming a commerce table inside any directory
+  // below was therefore caught by NEITHER layer — not ESLint, because a raw
+  // query needs no import, and not this scan, because it never walked here.
+  // That gap is exactly what a text scan exists to close, so it now covers
+  // every module the lint zones do.
+  'src/modules/publish',
+  'src/modules/content',
+  'src/modules/scheduler',
+  'src/modules/queue',
+  'src/modules/comments',
+  'src/modules/connected-accounts',
+  'src/common',
 ];
 
 /** Both the Prisma client accessor spelling AND the physical table name. */

@@ -59,8 +59,27 @@ describe('assertDisposableDatabase', () => {
     );
   });
 
-  it('allows a deliberately-overridden non-e2e name', () => {
-    expect(assertDisposableDatabase(DEMO_URL, { [E2E_TRUNCATE_OVERRIDE_ENV]: '1' })).toBe(DEMO_URL);
+  // QA-2: the override used to be a boolean, checked BEFORE the name check, so
+  // `ALLOW_E2E_TRUNCATE=1` waved through the demo database — one env var away
+  // from the data loss the name check exists to prevent. It must now NAME the
+  // database it is willing to lose, which cannot be set once and forgotten
+  // while DATABASE_URL moves underneath it.
+  it('rejects a bare "1" — that is the pre-QA-2 hole', () => {
+    expect(() => assertDisposableDatabase(DEMO_URL, { [E2E_TRUNCATE_OVERRIDE_ENV]: '1' })).toThrow(
+      /Refusing to run the e2e suite against database/,
+    );
+  });
+
+  it('allows an override that names the exact database being sacrificed', () => {
+    expect(assertDisposableDatabase(DEMO_URL, { [E2E_TRUNCATE_OVERRIDE_ENV]: 'content_hub' })).toBe(
+      DEMO_URL,
+    );
+  });
+
+  it('does not accept an override naming a different database', () => {
+    expect(() =>
+      assertDisposableDatabase(DEMO_URL, { [E2E_TRUNCATE_OVERRIDE_ENV]: 'some_other_db' }),
+    ).toThrow(/Refusing to run the e2e suite against database/);
   });
 
   it('does not treat an arbitrary override value as consent', () => {
