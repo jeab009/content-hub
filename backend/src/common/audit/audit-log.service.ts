@@ -53,7 +53,44 @@ export type AuditAction =
   | 'manual_external_post_recorded'
   // Phase 5 — report export. Meta carries who/when/report/filters and NEVER
   // any PII (comment exports are aggregate-only; see the export service).
-  | 'report_exported';
+  | 'report_exported'
+  // Phase 6 — commerce / affiliate (docs/phase6-architecture-design.md §3.3,
+  // WBS 6.0.4). Every mutating commerce path has exactly one action; the read
+  // and export paths reuse none of them.
+  //
+  // AUDIT META EXCLUSION LIST (System Analyst SA-4, decided at the 6.0 gate).
+  // These commerce fields must NEVER be placed in `meta`, on any of the
+  // actions below:
+  //   - commerce_conversions.statement_ref  (free text, highest residual PII)
+  //   - commerce_placements.note            (free text)
+  //   - commerce_products.name              (a product name is not PII, but is
+  //                                          excluded for consistency of the rule)
+  //   - affiliate_links.url                 (may carry sub-ids/tracking params)
+  // The redaction pass (redactSensitive) already runs once over every meta
+  // object and reuses the result for both sinks, so omitting these keys at the
+  // call site is sufficient — there is no code path that persists raw meta.
+  //
+  // NOTE on `trackingCode` (SA-4 correction, decided): `redactSensitive`
+  // matches SENSITIVE_FIELD_PATTERNS by case-insensitive SUBSTRING and the
+  // list includes 'code' (OAuth authorization codes). So a `trackingCode` key
+  // in meta would be written as [REDACTED]. DECISION: a tracking code has no
+  // value in the audit trail, so it is simply never put in meta — the
+  // redaction is a harmless no-op we rely on, not a bug to file. Documented
+  // here so QA does not raise it.
+  | 'commerce_product_created'
+  | 'commerce_product_updated'
+  | 'commerce_product_retired'
+  | 'affiliate_link_created'
+  | 'affiliate_link_retired'
+  | 'product_anchor_recorded'
+  | 'product_anchor_removed'
+  | 'commerce_placement_recorded'
+  | 'commerce_conversion_added'
+  // Distinct from `report_exported` (SA-8): `audit_logs` is indexed on
+  // (action, createdAt), so a distinct action is queryable where a meta
+  // discriminator is not, and it keeps commerce exports off any alert that
+  // aggregates payout-report pulls.
+  | 'commerce_report_exported';
 
 export type AuditResult = 'success' | 'failure';
 

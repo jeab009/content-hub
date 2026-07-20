@@ -3,6 +3,83 @@
 > Note: Phases 2–4 were tracked in `docs/phase*-*.md` rather than here; this
 > file resumes at Phase 5.
 
+## Phase 6.0 — Commerce/Affiliate Schema & Separation Gate (2026-07-20)
+
+Schema, separation enforcement, policy and test infrastructure only. **No 6A
+endpoint or service ships here** — no placements, conversions, anchors or
+summary. 6.0 is the gate those are built through, not a feature slice.
+
+Closes the 8 conditions blocking the gate in `docs/phase6-system-analysis.md`
+§7 (APPROVED WITH CONDITIONS, 21 items).
+
+### Added
+
+- **Five commerce tables, three enums, one nullable column** — migration
+  `20260721000000_phase6_commerce`, additive only. `Platform` and
+  `AssetPlatform` are untouched: Shopee is a `CommerceChannel`, because
+  `AssetPlatform` is the ranking domain (`RANKED_PLATFORMS_V2 =
+  PLATFORM_TIE_BREAK_ORDER`) and appending a value there would have enrolled
+  commerce into v2 scoring with no code change and no failing test — permanently,
+  since Postgres enum additions are irreversible.
+- **Layer 1 of the separation** — no commerce model declares a Prisma relation
+  to `Post`/`Content`/`ContentAsset`/`User`. The FKs are hand-written `ALTER
+  TABLE` DDL, following the `posts_content_platform_active_key` precedent, so
+  Postgres enforces integrity while the client type graph gains no edge:
+  `prisma.post.findMany({ include: { productAnchors: true } })` does not
+  typecheck. This is the only layer that is not a test, and it is the one
+  carrying the guarantee.
+- **Separation test suite, in a location jest actually collects** —
+  `src/testing/separation/{enum-freeze,commerce-boundary,commerce-schema-freeze,csv-header-freeze}.spec.ts`.
+  The design placed these under `backend/test/`, which `rootDir: 'src'` never
+  reads; they would have reported green having never executed.
+- **WP 6.0.8 — the first real-database test harness in this repo.** All 39
+  pre-Phase-6 specs mock `PrismaService`. `jest.e2e.config.js`, deterministic
+  fixtures with fixed uuids and fixed `collectedAt` (`src/testing/e2e/`), and
+  `test/payout-unaffected-by-commerce.e2e-spec.ts` — the byte-identity proof
+  that seeding adversarial commerce data changes no payout figure, CSV byte or
+  ranking score. Runs as its own CI job so a failure reads as "separation
+  broken", not one red dot among 457.
+- **`docs/phase6-commerce-pdpa-separation-policy.md`** (WP 6.0.6) — the signed
+  PDPA position, the `statementRef` pattern decision, the retention/erasure
+  procedure, the currency rule, and a register of what is deferred to 6A.
+
+### Changed
+
+- **ESLint import zones, both directions, system-wide** (backend and frontend).
+  The design's backend zone named four directories; it now covers
+  `scheduler`, `content`, `queue`, `publish` and `common` too — a shared helper
+  in `common/utils/` importing both sides would have passed. `frontend/.eslintrc.json`
+  became `.eslintrc.js` so the zones can carry their rationale (JSON rejects a
+  `"//"` key inside `overrides`).
+- **`escapeCsvField` no longer formula-prefixes a plain number.** Commerce
+  reversals are negative by design, and `'-240.00` is a text cell a spreadsheet
+  will not sum — an admin reconciling the export would have got a total silently
+  excluding every reversal. `-1+1` and `=cmd` are still defanged. No existing
+  export byte changes: payout revenue is never negative.
+- **`AuditAction`** gains ten commerce actions, with the audit-meta exclusion
+  list and the `trackingCode`/`redactSensitive` interaction documented inline so
+  QA does not file it as a bug.
+- **Payout CSV headers extracted to named constants** so the frozen-header test
+  can assert them without booting the app.
+
+### Migration constraints worth naming
+
+`note` capped at 200 chars (A4, was 500); `CHECK (currency ~ '^[A-Z]{3}$')` on
+both money-bearing tables (SA-9/C1); `CHECK (reversal_of_id <> id)` (SA-2/C2);
+the Shopee duration CHECK written with an explicit `IS NOT NULL` conjunct
+because the naive form silently passes NULL — the opposite of "null is a
+rejection". All five are verified live against Postgres by the e2e suite.
+
+### Deferred to 6A (with reason)
+
+`assertStatementRefShape()` call sites and the non-THB service guard need a
+write path that does not exist yet — the pattern and the allow-list are frozen
+here. The byte-identity capture goes through the read services rather than HTTP;
+closing that to a full authenticated supertest harness belongs in 6A.10 when the
+commerce endpoints exist. See the policy doc §9 for the full register.
+
+---
+
 ## Phase 5D.1 — Engine-scoped ranking reads + durable audit trail (2026-07-19)
 
 Backend-only consolidation pass. Closes the two items that gated the ranking-v2

@@ -28,6 +28,9 @@ enum UserRole {
   admin
 }
 
+// ⚠ Phase 6: `shopee` / `tiktok_shop` were deliberately NOT added here. See
+// the warning block on `AssetPlatform` below and phase6-project-plan.md
+// Decision 2. Frozen by src/testing/separation/enum-freeze.spec.ts.
 enum Platform {
   facebook
   youtube
@@ -129,6 +132,23 @@ enum CopyrightClearance {
 // (LINE Official Account) rather than reusing Phase 1's generic "line" —
 // kept as its own enum so the two concerns don't get conflated and Phase 1
 // data is untouched.
+//
+// ⚠ STOP — READ BEFORE ADDING A VALUE HERE (Phase 6, risk R4).
+// This enum is THE RANKING DOMAIN, not a labelling enum.
+// `ranking-v2.constants.ts` sets
+//     RANKED_PLATFORMS_V2 = PLATFORM_TIE_BREAK_ORDER   (readonly AssetPlatform[])
+// so appending a value here ENROLS IT INTO v2 SCORING on the spot — with no
+// code change, no review, and no failing test. Phase 6 deliberately did NOT
+// add `shopee` here for exactly this reason: commerce/affiliate is a
+// structurally separate stream and the ranking engine does not consume
+// commerce signal (phase6-project-plan.md C-C, Decision 2). Commerce uses the
+// parallel `CommerceChannel` enum instead.
+// Enum additions are IRREVERSIBLE per the header rule at the top of this
+// file, so this mistake would be permanent. A value added here also demands a
+// platform_cadence_targets row, a pillar_ratio_policies position, a scheduler
+// cadence card, and a platform-map.util counterpart.
+// The freeze test at src/testing/separation/enum-freeze.spec.ts fails if this
+// enum changes.
 enum AssetPlatform {
   facebook
   youtube
@@ -285,12 +305,19 @@ model Content {
 // same source). Schema-only this iteration — nothing writes to this table
 // yet (Phase 2 CMS asset pipeline will).
 model ContentAsset {
-  id          String        @id @default(uuid()) @db.Uuid
-  contentId   String        @map("content_id") @db.Uuid
-  platform    AssetPlatform
-  aspectRatio AspectRatio   @map("aspect_ratio")
-  mediaUrl    String        @map("media_url")
-  createdAt   DateTime      @default(now()) @map("created_at")
+  id              String        @id @default(uuid()) @db.Uuid
+  contentId       String        @map("content_id") @db.Uuid
+  platform        AssetPlatform
+  aspectRatio     AspectRatio   @map("aspect_ratio")
+  mediaUrl        String        @map("media_url")
+  // Phase 6 addition (additive, nullable). Duration is a genuine property of
+  // any video asset, not a Shopee-specific hack — but it is the property the
+  // Shopee 10–60s placement rule reads. Nullable with no backfill: every
+  // legacy row stays valid, and a best-effort MP4 parse that fails must leave
+  // NULL rather than guess. NULL is a rejection at the placement gate, never
+  // a pass (see commerce_placements_shopee_duration_chk).
+  durationSeconds Int?          @map("duration_seconds")
+  createdAt       DateTime      @default(now()) @map("created_at")
 
   content Content @relation(fields: [contentId], references: [id], onDelete: Restrict)
 
@@ -567,4 +594,273 @@ model AuditLog {
   @@index([action, createdAt])
   @@index([actor, createdAt])
   @@map("audit_logs")
+}
+
+// =========================================================================
+// Phase 6 additions — Commerce / Affiliate
+// =========================================================================
+//
+// Additive-only per the header rule. See docs/phase6-architecture-design.md
+// §1 and docs/phase6-system-analysis.md (conditions A1–A6, B1–B7).
+//
+// THE LOAD-BEARING STRUCTURAL CHOICE (design §2.1, ADR-6.1), stated here
+// because this is where the next person will be standing when they try to
+// "tidy up" the schema:
+//
+//   NO commerce model below declares a Prisma relation to `Post`, `Content`,
+//   `ContentAsset` or `User`. Those columns are plain `String @db.Uuid`, and
+//   their FOREIGN KEYs are hand-written ALTER TABLE DDL in the migration
+//   20260721000000_phase6_commerce — the same technique this schema already
+//   uses for `posts_content_platform_active_key`.
+//
+// Why: Prisma requires a back-relation on BOTH sides. The moment
+// `ProductAnchor` declares `post Post @relation(...)`, Prisma FORCES `Post`
+// to gain `productAnchors ProductAnchor[]`, and from that moment
+//     this.prisma.post.findMany({ include: { productAnchors: true } })
+// is a legal, type-checked call inside DashboardService. Commerce revenue
+// reaching a payout dashboard would then be prevented only by nobody writing
+// that line. With no relation field the traversal is not merely discouraged —
+// it is UNSPELLABLE. Postgres still enforces referential integrity.
+//
+// If you add a relation field here you have removed the phase's primary
+// separation guarantee. Do not. Relations WITHIN the commerce namespace
+// (product → links → anchors → placements) are declared normally; the
+// boundary is only at the edge of the namespace.
+
+// Commerce/affiliate channel. DELIBERATELY NOT a value on `Platform` or
+// `AssetPlatform` — see the warning block on `AssetPlatform`.
+enum CommerceChannel {
+  shopee
+  tiktok_shop
+}
+
+// Provenance, mirroring MetricSource(api|manual). Every commerce table carries
+// it so that if API access is ever granted (none exists today — no Shopee KAM,
+// no TikTok Shop Creator Affiliate), API-sourced rows are distinguishable from
+// hand-entered ones without a migration.
+//
+// Deliberately NOT a reuse of `MetricSource`: reusing it would put a
+// metrics-namespaced type on commerce rows and create exactly the conceptual
+// bridge the separation exists to prevent.
+enum CommerceSource {
+  manual
+  api
+}
+
+// Lifecycle of a Shopee video placement. Two values only: this phase records
+// placements that already exist natively. Upload-state values (`uploading`,
+// `processing`) belong to the live path, which is not built (no API access);
+// appending them later is additive and safe.
+enum CommercePlacementStatus {
+  recorded
+  removed
+}
+
+/// One row per sellable product the admin promotes. No FK to `Content`: a
+/// product is promoted across many contents and a content promotes many
+/// products, so linking them directly would be wrong at both ends.
+model CommerceProduct {
+  id                String          @id @default(uuid()) @db.Uuid
+  channel           CommerceChannel
+  externalProductId String          @map("external_product_id")
+  name              String
+  sku               String?
+  productUrl        String?         @map("product_url")
+  listPrice         Decimal?        @map("list_price") @db.Decimal(12, 2)
+  currency          String          @default("THB") @db.Char(3)
+  /// INDICATIVE ONLY. Never multiplied by sales anywhere in the codebase —
+  /// actual earnings are always the entered CommerceConversion.commissionAmount
+  /// from the platform statement.
+  commissionRatePct Decimal?        @map("commission_rate_pct") @db.Decimal(5, 2)
+  isActive          Boolean         @default(true) @map("is_active")
+  retiredAt         DateTime?       @map("retired_at")
+  source            CommerceSource  @default(manual)
+  /// SQL FK → users(id) ON DELETE RESTRICT. No Prisma relation (see header).
+  createdBy         String          @map("created_by") @db.Uuid
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  links   AffiliateLink[]
+  anchors ProductAnchor[]
+
+  @@unique([channel, externalProductId])
+  @@index([channel, isActive, name])
+  @@map("commerce_products")
+}
+
+/// One row per (product × tracking link). Its own table, not a column on the
+/// product, because one product accumulates several tracking links over time
+/// and a conversion must attribute to the link that earned it.
+///
+/// `channel` is deliberately ABSENT (design refinement vs the plan): channel is
+/// a property of the product and a denormalised copy here can drift into a
+/// meaningless-but-insertable state (a `shopee` product carrying a
+/// `tiktok_shop` link). A genuine cross-channel case is modelled as a second
+/// product row, which UNIQUE(channel, external_product_id) already anticipates.
+model AffiliateLink {
+  id           String         @id @default(uuid()) @db.Uuid
+  productId    String         @map("product_id") @db.Uuid
+  url          String
+  trackingCode String?        @map("tracking_code")
+  subId        String?        @map("sub_id")
+  isActive     Boolean        @default(true) @map("is_active")
+  retiredAt    DateTime?      @map("retired_at")
+  source       CommerceSource @default(manual)
+  createdBy    String         @map("created_by") @db.Uuid
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  product CommerceProduct @relation(fields: [productId], references: [id], onDelete: Restrict)
+  anchors ProductAnchor[]
+
+  /// Not a business rule — this exists purely as the target for the composite
+  /// FK on product_anchors(affiliate_link_id, product_id), which is what makes
+  /// "a link may only be attached to an anchor for its OWN product" a database
+  /// guarantee rather than an app-code convention.
+  @@unique([id, productId])
+  @@unique([productId, url])
+  @@index([productId, isActive])
+  @@map("affiliate_links")
+}
+
+/// "This product was ปักตะกร้า on this video." Anchors to a `Post` OR a
+/// `CommercePlacement` — exactly one, enforced by a CHECK. Anchoring at Post
+/// grain (not Content) is deliberate: the same content posted to TikTok and to
+/// Shopee may pin different products, and losing which video carried which
+/// product would defeat the feature.
+///
+/// Soft-remove via `removedAt` (never hard-deleted) with PARTIAL unique
+/// indexes WHERE removed_at IS NULL, so an un-anchor → re-anchor cycle is
+/// possible without destroying history.
+model ProductAnchor {
+  id              String         @id @default(uuid()) @db.Uuid
+  /// SQL FK → posts(id). NO Prisma relation (see header).
+  postId          String?        @map("post_id") @db.Uuid
+  placementId     String?        @map("placement_id") @db.Uuid
+  productId       String         @map("product_id") @db.Uuid
+  affiliateLinkId String?        @map("affiliate_link_id") @db.Uuid
+  /// Ordering in the basket UI. NOT unique per target — ties break by
+  /// `anchoredAt` (Phase 6.0 decision; see the commerce constants).
+  anchorPosition  Int?           @map("anchor_position")
+  anchoredAt      DateTime       @default(now()) @map("anchored_at")
+  removedAt       DateTime?      @map("removed_at")
+  source          CommerceSource @default(manual)
+  /// SQL FK → users(id). NO Prisma relation.
+  recordedBy      String         @map("recorded_by") @db.Uuid
+  createdAt       DateTime       @default(now()) @map("created_at")
+
+  product       CommerceProduct    @relation(fields: [productId], references: [id], onDelete: Restrict)
+  affiliateLink AffiliateLink?     @relation(fields: [affiliateLinkId], references: [id], onDelete: Restrict)
+  placement     CommercePlacement? @relation(fields: [placementId], references: [id], onDelete: Restrict)
+
+  @@index([postId])
+  @@index([placementId])
+  @@index([productId])
+  @@map("product_anchors")
+}
+
+/// One row per Shopee video placement. A PARALLEL to `Post`, not a `Post` row —
+/// putting Shopee into `posts` would have required a fifth `Platform` value,
+/// which is irreversible and would have enrolled commerce into ranking.
+model CommercePlacement {
+  id              String                  @id @default(uuid()) @db.Uuid
+  /// SQL FK → contents(id). NO Prisma relation (see header).
+  contentId       String                  @map("content_id") @db.Uuid
+  channel         CommerceChannel
+  externalMediaId String                  @map("external_media_id")
+  externalUrl     String?                 @map("external_url")
+  status          CommercePlacementStatus @default(recorded)
+  /// Reuses the EXISTING PublishMethod enum unchanged — no new enum, and
+  /// `adapter` becomes meaningful the day a live upload path exists.
+  publishMethod   PublishMethod           @default(manual_external) @map("publish_method")
+  /// SQL FK → content_assets(id) ON DELETE SET NULL. NO Prisma relation.
+  sourceAssetId   String?                 @map("source_asset_id") @db.Uuid
+  mediaUrl        String?                 @map("media_url")
+  /// Nullable at the column so a future tiktok_shop placement without a
+  /// duration stays representable; commerce_placements_shopee_duration_chk
+  /// makes it effectively NOT NULL for `shopee`.
+  durationSeconds Int?                    @map("duration_seconds")
+  /// ⚠ FREE TEXT — one of exactly two columns in the commerce schema capable
+  /// of holding personal data if an admin deliberately types it. Capped at 200
+  /// characters (System Analyst condition A4, reduced from the design's 500).
+  /// Never written to audit_logs.meta; never exported. Clearable in place —
+  /// see COMMERCE_ERASABLE_FREE_TEXT_COLUMNS.
+  note            String?
+  /// Optimistic-concurrency guard, same as Post.version.
+  version         Int                     @default(0)
+  source          CommerceSource          @default(manual)
+  /// SQL FK → users(id). NO Prisma relation.
+  recordedBy      String                  @map("recorded_by") @db.Uuid
+  placedAt        DateTime                @default(now()) @map("placed_at")
+  removedAt       DateTime?               @map("removed_at")
+  createdAt       DateTime                @default(now()) @map("created_at")
+  updatedAt       DateTime                @updatedAt @map("updated_at")
+
+  anchors ProductAnchor[]
+
+  @@index([contentId, status])
+  @@index([channel, placedAt])
+  @@map("commerce_placements")
+}
+
+/// One row per commission/conversion figure entered from a platform payout
+/// statement. APPEND-ONLY: no `updatedAt`, no PATCH/DELETE route. A refund or
+/// cancelled order is a NEW row with a negative `commissionAmount`, optionally
+/// naming the row it reverses via `reversalOfId` — never an edit.
+///
+/// This table is the reason Phase 6 exists as a separate stream. It has NO FK
+/// to `Metric`, no relation to it, and nothing under modules/ranking,
+/// modules/metrics, modules/dashboard or modules/reports may read it. That is
+/// enforced by ESLint zones, a static boundary scan, and the byte-identity
+/// e2e proof — see docs/phase6-system-analysis.md §2.
+///
+/// PDPA: there is NO buyer_*, order_id, recipient, address, phone or email
+/// column, and no per-transaction identifier. `ordersCount` / `itemsSold` are
+/// aggregate counters and cannot hold an identifier. Commerce introduces no
+/// new data subject: the only personal data is `recordedBy`, the single admin.
+model CommerceConversion {
+  id               String          @id @default(uuid()) @db.Uuid
+  channel          CommerceChannel
+  /// DATE, not TIMESTAMP: statements are day-grained, and a timestamp invites
+  /// a timezone bug in overlap detection.
+  periodStart      DateTime        @map("period_start") @db.Date
+  periodEnd        DateTime        @map("period_end") @db.Date
+  /// AGGREGATE COUNTS ONLY. Nullable — many statement lines carry a commission
+  /// with no count.
+  ordersCount      Int?            @map("orders_count")
+  itemsSold        Int?            @map("items_sold")
+  grossSalesAmount Decimal?        @map("gross_sales_amount") @db.Decimal(12, 2)
+  /// MAY BE NEGATIVE — refunds/reversals are new rows, never edits. This is
+  /// the documented divergence from `Metric`, which has no reversal concept,
+  /// and it is why escapeCsvField had to learn not to formula-prefix a
+  /// negative number (see common/utils/csv.util.ts).
+  commissionAmount Decimal         @map("commission_amount") @db.Decimal(12, 2)
+  currency         String          @default("THB") @db.Char(3)
+  /// All four attribution columns are NULLABLE — an unattributed statement
+  /// line ("commission, week 29") is a normal, expected case.
+  /// SQL FKs only; NO Prisma relation into posts.
+  postId           String?         @map("post_id") @db.Uuid
+  placementId      String?         @map("placement_id") @db.Uuid
+  productId        String?         @map("product_id") @db.Uuid
+  affiliateLinkId  String?         @map("affiliate_link_id") @db.Uuid
+  /// ⚠ FREE TEXT — the second of exactly two PII-capable columns, and the
+  /// highest-residual one. Max 64 chars AND format-constrained to
+  /// COMMERCE_STATEMENT_REF_PATTERN (no spaces, so a pasted Latin-script name
+  /// fails) in the SERVICE, not only the DTO — the adapter ingestion path
+  /// never touches class-validator. Never audited, never exported.
+  statementRef     String?         @map("statement_ref")
+  /// Self-FK: a reversal row may name the row it reverses. Its ABSENCE would
+  /// create PDPA pressure — without it, "which correction cancels which line"
+  /// is only recoverable by eye from statement_ref, pushing the admin toward
+  /// pasting an order id there.
+  reversalOfId     String?         @map("reversal_of_id") @db.Uuid
+  source           CommerceSource  @default(manual)
+  recordedBy       String          @map("recorded_by") @db.Uuid
+  createdAt        DateTime        @default(now()) @map("created_at")
+
+  @@index([channel, periodStart, periodEnd])
+  @@index([productId, periodStart])
+  @@index([placementId])
+  @@index([createdAt])
+  @@map("commerce_conversions")
 }

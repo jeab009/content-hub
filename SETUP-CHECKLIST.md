@@ -253,6 +253,31 @@ scope ที่ระบบขอ (ตั้งไว้แล้ว ไม่�
 
 > เงื่อนไขเดิมคือ "เก็บ requirement ระหว่าง Phase 2-5" แต่ build เร็วกว่าปฏิทิน (~3 วัน) จึงยังไม่มีข้อมูลจริงเลย — ต้องผูกกับ**การใช้งานจริง** ไม่ใช่ phase
 
+### 6.4 Meta Ads MCP Server — ทำเป็นขั้นตอนสุดท้ายก่อน production
+
+ตรวจสอบแล้ว 2026-07-20: Meta เปิด **Meta Ads AI Connectors** (MCP server + CLI) ประกาศ 29 เม.ย. 2026 สถานะ **open beta** (ยังไม่ GA) — เปิดให้ "businesses of all sizes across regions" ไม่มี waitlist
+
+- Endpoint: `https://mcp.facebook.com/ads` (ยืนยันแล้ว ตอบ HTTP 401 = remote MCP จริง ต้อง OAuth)
+- Auth: **Meta Business OAuth ตรง — ไม่ต้องมี Developer App, ไม่ต้อง App Review, ไม่ต้องเขียนโค้ด**
+- ~29 tools: reporting/insights, campaign management (สร้าง/แก้ campaign-adset-ad ด้วยภาษาธรรมชาติ), catalog, account diagnostics, dataset ops
+
+**ขั้นตอน (ทำท้ายสุด ก่อนขึ้น production):**
+
+- [ ] เพิ่ม MCP server จาก terminal: `claude mcp add --transport http meta-ads https://mcp.facebook.com/ads`
+- [ ] เปิด `claude` interactive → `/mcp` → authenticate ผ่าน Meta Business OAuth, เลือก ad account ที่จะให้เข้าถึง
+- [ ] ทดสอบด้วย **ad account ทดสอบ / budget เล็ก** ก่อนเสมอ
+- [ ] ตรวจว่าใช้เป็นเครื่องมือ**ของ admin ข้างนอกระบบ** — ห้ามผูก Content Hub ให้ call MCP นี้เป็น dependency (ดูเหตุผลด้านล่าง)
+
+**ข้อควรระวัง:**
+
+- campaign ที่ MCP สร้างจะเป็น **paused status เสมอ ไม่มี override flag** — สอดคล้องกับ business rule เดิม (ห้าม auto-publish, admin ต้อง confirm) แต่ tool ยังแก้ campaign ที่ active อยู่ได้ (budget/targeting/status) = **เงินจริง**
+- ยัง open beta: ฟรีช่วง beta แต่ **ไม่มี pricing commitment / ไม่มี SLA / ไม่ประกาศวันจบ beta** → อย่าให้ระบบ production พึ่งพา
+- เข้าไม่ถึง Advantage+ optimization, bidding algorithm, audience expansion, lead form
+- MCP session กิน ~55k token แค่ tool descriptions
+- Meta developer docs (`developers.facebook.com/documentation/mcp`) ตอนนี้ list ละเอียดแค่ Devtools MCP — ตัว Ads ยังไม่มี doc เต็ม (สอดคล้องสถานะ beta). รายละเอียด 29 tools / paused-only / 55k token มาจาก third-party blog **ยังไม่ยืนยันจาก doc ทางการ** — ต้องตรวจซ้ำตอนจะใช้จริง
+
+**ผลต่อการตัดสินใจ Phase 7 (Ads revisit):** เหตุผลเดิมที่ไม่รวม ads เข้าระบบคือต้องสร้าง ad account OAuth + Ads API integration ใหม่ทั้งก้อน — **ต้นทุนนั้นหายไปแล้ว** (ไม่ต้องเขียน integration เลย). แต่ยังไม่ควรผูกเข้าระบบจนกว่าจะ GA + รู้ราคา. B-lite เดิมยังถูก แค่เครื่องมือดีขึ้น
+
 ---
 
 ## ลำดับที่แนะนำ

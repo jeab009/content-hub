@@ -6,6 +6,62 @@ import { CsvValue, toCsv } from '../../common/utils/csv.util';
 import { ReportQueryDto } from './dto/report-query.dto';
 
 /**
+ * Frozen header rows for the three payout/analytics CSV exports.
+ *
+ * Extracted to named constants (Phase 6, System Analyst B5) so the header
+ * freeze test at src/testing/separation/csv-header-freeze.spec.ts can
+ * deep-equal them without booting the app or touching a DB. The freeze is the
+ * standing price of the `reports.controller.ts` ESLint exemption: that
+ * controller is the one file allowed to see both the payout export service and
+ * the (future) commerce export service, i.e. the exact place a `commission_thb`
+ * column could be appended to `revenue.csv`. The byte-identity e2e covers
+ * revenue.csv only when its fixture runs; this literal covers all three,
+ * always, in the fast unit suite.
+ *
+ * If you are legitimately changing a report's columns, update the literal in
+ * the spec in the same commit — that diff IS the review moment.
+ */
+export const REVENUE_CSV_HEADERS = [
+  'content_id',
+  'content_title',
+  'content_pillar',
+  'platform',
+  'post_id',
+  'publish_method',
+  'collected_at',
+  'metric_source',
+  'reach',
+  'engagement',
+  'revenue_thb',
+] as const;
+
+export const OVERRIDE_LOG_CSV_HEADERS = [
+  'post_id',
+  'content_id',
+  'content_title',
+  'content_pillar',
+  'recommended_platform',
+  'selected_platform',
+  'was_override',
+  'override_reason',
+  'publish_method',
+  'status',
+  'priority_score',
+  'recommended_at',
+  'posted_at',
+  'created_at',
+] as const;
+
+export const COMMENT_SUMMARY_CSV_HEADERS = [
+  'platform',
+  'sentiment',
+  'priority',
+  'comment_count',
+  'replied_count',
+  'sla_breached_count',
+] as const;
+
+/**
  * CSV report builders (Phase 5A.6). Read-only aggregation; nothing here
  * writes. Each method returns a finished CSV document — the controller adds
  * the headers and the audit row.
@@ -58,22 +114,7 @@ export class ReportExportService {
         Number(metric.revenue).toFixed(2),
       ]);
 
-    return toCsv(
-      [
-        'content_id',
-        'content_title',
-        'content_pillar',
-        'platform',
-        'post_id',
-        'publish_method',
-        'collected_at',
-        'metric_source',
-        'reach',
-        'engagement',
-        'revenue_thb',
-      ],
-      rows,
-    );
+    return toCsv(REVENUE_CSV_HEADERS, rows);
   }
 
   /**
@@ -113,25 +154,7 @@ export class ReportExportService {
       post.createdAt.toISOString(),
     ]);
 
-    return toCsv(
-      [
-        'post_id',
-        'content_id',
-        'content_title',
-        'content_pillar',
-        'recommended_platform',
-        'selected_platform',
-        'was_override',
-        'override_reason',
-        'publish_method',
-        'status',
-        'priority_score',
-        'recommended_at',
-        'posted_at',
-        'created_at',
-      ],
-      rows,
-    );
+    return toCsv(OVERRIDE_LOG_CSV_HEADERS, rows);
   }
 
   /**
@@ -184,10 +207,7 @@ export class ReportExportService {
         }),
     );
 
-    return toCsv(
-      ['platform', 'sentiment', 'priority', 'comment_count', 'replied_count', 'sla_breached_count'],
-      rows,
-    );
+    return toCsv(COMMENT_SUMMARY_CSV_HEADERS, rows);
   }
 
   private metricWhere(query: ReportQueryDto): Prisma.MetricWhereInput {

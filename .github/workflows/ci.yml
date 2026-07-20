@@ -78,6 +78,64 @@ jobs:
       - name: Build
         run: npm run build
 
+  # Phase 6 WP 6.0.8 — the real-database separation proof (exit criterion #6).
+  #
+  # ITS OWN JOB, ON PURPOSE (System Analyst condition B2). The unit job above
+  # runs 400+ specs; a separation failure buried among them reads as "one red
+  # dot", not as "the commerce/payout boundary is broken". As a named job the
+  # failure is legible from the PR checks list without opening a log.
+  #
+  # It also runs against a database the unit job never touches, because this
+  # suite TRUNCATES every table between runs — sharing a database with the unit
+  # job would be a race waiting to happen.
+  separation-e2e:
+    name: Backend (commerce/payout separation, real DB)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: content_hub
+          POSTGRES_PASSWORD: content_hub
+          POSTGRES_DB: content_hub_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U content_hub"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://content_hub:content_hub@localhost:5432/content_hub_e2e?schema=public
+      # v2 is the engine that consumes real per-pillar earnings, so it is the
+      # one whose scores could in principle be contaminated by commerce money.
+      # Ranking under v1 would be a weaker proof.
+      RANKING_ENGINE: v2
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate
+        run: npx prisma generate
+
+      - name: Run migrations
+        run: npx prisma migrate deploy
+
+      - name: Separation e2e (byte-identity proof + live DB constraints)
+        run: npm run test:e2e
+
   frontend:
     name: Frontend (lint, typecheck, build)
     runs-on: ubuntu-latest

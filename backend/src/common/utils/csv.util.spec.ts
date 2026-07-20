@@ -18,7 +18,14 @@ describe('csv.util', () => {
       // No comma/quote/newline, so no wrapping — just the quote guard.
       expect(escapeCsvField('=1+1')).toBe("'=1+1");
       expect(escapeCsvField('@SUM(A1)')).toBe("'@SUM(A1)");
-      expect(escapeCsvField('-5')).toBe("'-5");
+    });
+
+    // Phase 6 (System Analyst C8): a leading `-` followed by anything OTHER
+    // than a plain number is still a potential formula and is still defanged.
+    it('still defangs a leading-minus payload that is NOT a plain number', () => {
+      expect(escapeCsvField('-1+1')).toBe("'-1+1"); // arithmetic, not a number
+      expect(escapeCsvField('-cmd|/C calc')).toBe("'-cmd|/C calc");
+      expect(escapeCsvField("=cmd|' /C calc'!A1")).toBe("'=cmd|' /C calc'!A1");
     });
 
     it('neutralizes leading tab and carriage return too', () => {
@@ -33,11 +40,16 @@ describe('csv.util', () => {
       expect(escapeCsvField('Q1-2026')).toBe('Q1-2026');
     });
 
-    it('does not mangle a plain negative NUMBER (numbers are not strings from a user)', () => {
-      // Numbers still get the guard when stringified — deliberate: correctness
-      // of the export beats prettiness, and a leading-'-' cell is exactly the
-      // injection shape. Consumers read the numeric columns, not the glyph.
-      expect(escapeCsvField(-5)).toBe("'-5");
+    // Phase 6 (System Analyst C8/C7): a plain number — including a NEGATIVE one
+    // — is never a formula, so it must NOT be quote-prefixed. Commerce
+    // reversals are negative by design, and a `'-240.00` text cell is a money
+    // error the moment an admin sums the column. This is the behaviour change:
+    // before Phase 6, `-5` exported as the un-summable text `'-5`.
+    it('leaves a plain negative number summable (does NOT formula-prefix it)', () => {
+      expect(escapeCsvField(-5)).toBe('-5');
+      expect(escapeCsvField(-240)).toBe('-240');
+      expect(escapeCsvField(-250.0)).toBe('-250'); // JS number: trailing zeros gone
+      expect(escapeCsvField('-250.00')).toBe('-250.00'); // string form preserved
       expect(escapeCsvField(42)).toBe('42');
       expect(escapeCsvField(3.14)).toBe('3.14');
     });
