@@ -199,3 +199,20 @@ export const COMMERCE_ANCHOR_ORDER_TIE_BREAK = 'anchoredAt' as const;
  */
 export const COMMERCE_STEP_UP_TTL_MS = 15 * 60 * 1000;
 export const COMMERCE_STEP_UP_LIMIT = 5;
+
+/**
+ * Conversion idempotency window (6A.7, System Analyst condition C6). There
+ * is no unique constraint or client-generated idempotency key on
+ * `commerce_conversions` — the design's own R8 mitigation (a warn-only
+ * period-overlap probe) catches "I entered week 29 twice on two different
+ * days" but not the actually-likely trigger: a double-click or a client
+ * retry submitting the IDENTICAL body twice within a second. Both rows would
+ * land, the commerce total would inflate, and because the ledger is
+ * append-only the only correction is a compensating negative row.
+ *
+ * The fix: a byte-identical payload from the SAME recordedBy within this
+ * window is rejected with 409, rather than silently accepted as a second
+ * row. Cheap, and it preserves the append-only model — no PATCH/DELETE is
+ * added to fix a double-submit; the admin simply doesn't resubmit.
+ */
+export const COMMERCE_CONVERSION_IDEMPOTENCY_WINDOW_MS = 60 * 1000;

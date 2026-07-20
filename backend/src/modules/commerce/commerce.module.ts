@@ -17,6 +17,8 @@ import { PostAnchorsController } from './post-anchors.controller';
 import { CommercePlacementController } from './commerce-placement.controller';
 import { CommerceAnchorService } from './commerce-anchor.service';
 import { CommercePlacementService } from './commerce-placement.service';
+import { CommerceConversionController } from './commerce-conversion.controller';
+import { CommerceConversionService } from './commerce-conversion.service';
 
 /**
  * Commerce / affiliate module (6A). The ThrottlerModule registration below
@@ -50,7 +52,12 @@ import { CommercePlacementService } from './commerce-placement.service';
     ContentModule,
     PublishModule,
   ],
-  controllers: [CommerceCatalogController, PostAnchorsController, CommercePlacementController],
+  controllers: [
+    CommerceCatalogController,
+    PostAnchorsController,
+    CommercePlacementController,
+    CommerceConversionController,
+  ],
   providers: [
     CommerceAdapterRegistry,
     MockShopeeAdapter,
@@ -60,6 +67,7 @@ import { CommercePlacementService } from './commerce-placement.service';
     CommerceCatalogService,
     CommerceAnchorService,
     CommercePlacementService,
+    CommerceConversionService,
     AdminGuard,
   ],
   exports: [CommerceAdapterRegistry],
