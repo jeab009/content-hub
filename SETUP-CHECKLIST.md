@@ -221,6 +221,21 @@ scope ที่ระบบขอ (ตั้งไว้แล้ว ไม่�
 
 ---
 
+## ส่วนที่ 5.6 — เปิด git hook (ทำครั้งเดียวต่อ clone)
+
+hook อยู่ใน `.githooks/` แต่ git ไม่ใช้อัตโนมัติ ต้องชี้เอง:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+- [ ] รันคำสั่งนี้ (ตั้งให้แล้วใน clone ปัจจุบัน — แต่ clone ใหม่ต้องตั้งซ้ำ)
+
+> ป้องกัน commit ที่เอาเอกสาร review มารวมกับโค้ดที่มัน review — ดู `errorlog.md` P6-PROC-1
+> CI ก็ตรวจซ้ำอีกชั้น (job `review-authorship`) เผื่อ hook ไม่ได้เปิด
+
+---
+
 ## ส่วนที่ 6 — ตัดสินใจเชิงนโยบาย
 
 ### 6.1 Audit retention — ✅ ตัดสินใจ + implement แล้ว (2026-07-20)

@@ -6,6 +6,28 @@ on:
   pull_request:
 
 jobs:
+  # Guards the review boundary — see scripts/check-review-authorship.sh and
+  # errorlog.md P6-PROC-1. A review document committed alongside the source it
+  # reviews cannot be independent, so it is rejected mechanically rather than
+  # left to trust.
+  review-authorship:
+    name: Review authorship (no self-review commits)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check commits in this push / PR
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            RANGE="origin/${{ github.base_ref }}..HEAD"
+            git fetch --no-tags origin "${{ github.base_ref }}"
+          else
+            RANGE="${{ github.event.before }}..${{ github.sha }}"
+          fi
+          echo "Checking range: $RANGE"
+          ./scripts/check-review-authorship.sh "$RANGE"
+
   backend:
     name: Backend (lint, typecheck, test)
     runs-on: ubuntu-latest

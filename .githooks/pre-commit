@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Repo hooks live in .githooks/ — enable with:
+#   git config core.hooksPath .githooks
+set -e
+"$(git rev-parse --show-toplevel)/scripts/check-review-authorship.sh"
