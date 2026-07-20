@@ -21,7 +21,8 @@
  * database whose URL does not look like a disposable test/CI database, because
  * the cost of being wrong once is the developer's local data. The check is
  * deliberately conservative: opt in by naming your database, not by remembering
- * to be careful.
+ * to be careful — the database NAME must end in `e2e` (see
+ * `assertDisposableDatabase`), or `ALLOW_E2E_TRUNCATE=1` must be set.
  */
 
 import { Prisma, PrismaClient } from '@prisma/client';
@@ -54,15 +55,52 @@ const TRUNCATE_ORDER = [
   'users',
 ] as const;
 
+/** Opt-out hatch for a database that is disposable but not named like it. */
+export const E2E_TRUNCATE_OVERRIDE_ENV = 'ALLOW_E2E_TRUNCATE';
+
+/** A database name is accepted when it ends in `e2e`, optionally `_`-separated. */
+const DISPOSABLE_DB_NAME = /(^|_)e2e$/;
+
+/**
+ * Extracts the database name from a Postgres connection URL.
+ *
+ * `new URL()` cannot be given a `postgresql:` URL and asked for `pathname`
+ * reliably across Node versions, so the scheme is rewritten to `http:` purely
+ * for parsing. Returns `''` when the URL has no path component, which the
+ * caller treats as "not disposable".
+ */
+function databaseNameOf(url: string): string {
+  try {
+    const parsed = new URL(url.replace(/^[a-z+]+:/i, 'http:'));
+    return decodeURIComponent(parsed.pathname.replace(/^\//, ''));
+  } catch {
+    return '';
+  }
+}
+
 /**
  * Refuses any database that is not obviously disposable.
  *
- * CI uses `content_hub` on localhost, and a developer running this locally
- * points at the Docker compose database. Both are named below. Anything else
- * — a staging URL pasted into `.env`, a production URL — throws before a
- * single statement runs.
+ * TWO CHECKS, AND THE SECOND ONE IS THE LOAD-BEARING ONE (BUG-P6-01).
+ *
+ * The original guard checked only the HOST (`localhost`/`127.0.0.1`/`postgres`).
+ * That is not a disposability test at all: the Docker compose demo stack is
+ * reachable at exactly those hosts, and its database is named `content_hub` —
+ * so the guard waved through the persistent demo database as readily as a
+ * throwaway CI one, and `resetDatabase()` truncated it. QA hit this for real
+ * (P6-OBS-2) and lost the seeded demo data.
+ *
+ * The host check is kept (it still stops a staging/production URL pasted into
+ * `.env`), but the decision now rests on the database NAME: it must end in
+ * `e2e` — a name a human had to deliberately create for this purpose, e.g.
+ * CI's `content_hub_e2e`. A developer who genuinely wants to truncate a
+ * differently-named disposable database sets `ALLOW_E2E_TRUNCATE=1` and owns
+ * that choice explicitly.
  */
-function assertDisposableDatabase(url: string | undefined): string {
+export function assertDisposableDatabase(
+  url: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
   if (!url) {
     throw new Error(
       'DATABASE_URL is not set. The e2e suite needs a migrated, disposable database.',
@@ -74,6 +112,22 @@ function assertDisposableDatabase(url: string | undefined): string {
     throw new Error(
       'Refusing to run the e2e suite: DATABASE_URL does not point at localhost/127.0.0.1/postgres. ' +
         'This suite TRUNCATES every table. Point it at the CI database or the Docker compose one.',
+    );
+  }
+
+  const override = env[E2E_TRUNCATE_OVERRIDE_ENV];
+  if (override === '1' || override === 'true') {
+    return url;
+  }
+
+  const dbName = databaseNameOf(url);
+  if (!DISPOSABLE_DB_NAME.test(dbName)) {
+    throw new Error(
+      `Refusing to run the e2e suite against database "${dbName || '(unnamed)'}": its name does not ` +
+        'end in "e2e". This suite TRUNCATES every application table, including users, contents and ' +
+        'posts — running it against the Docker compose demo database erases the demo data. ' +
+        'Point DATABASE_URL at a disposable database whose name says so (e.g. content_hub_e2e), ' +
+        `or set ${E2E_TRUNCATE_OVERRIDE_ENV}=1 to override deliberately.`,
     );
   }
 

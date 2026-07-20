@@ -212,7 +212,7 @@ Correct, and the justification checks out against the schema: `audit_logs` is in
 Store as received, never convert, and the summary must group by currency rather than emit one wrong number. Confirmed.
 
 **Three additions:**
-1. Add `CHECK (currency ~ '^[A-Z]{3}$')` on all three money-bearing tables. `@db.Char(3)` is blank-padded and accepts `'xx '`, `'123'`, or lowercase; the CHECK costs nothing and prevents a `'thb'`/`'THB'` split that would silently fragment every group-by.
+1. Add `CHECK (currency ~ '^[A-Z]{3}$')` on all money-bearing tables. **CORRECTION (Bug Fixer, P6-QA-1, 2026-07-20): there are TWO, not three** — `commerce_products` and `commerce_conversions`. `affiliate_links`, `product_anchors` and `commerce_placements` carry no money column and correctly carry no currency CHECK. The delivered migration implements 2, matching `docs/phase6-commerce-pdpa-separation-policy.md` §6; QA and DevOps each confirmed this live via `\d+` on all five tables. This line's original "three" was wrong and is corrected here so 6A does not inherit it. `@db.Char(3)` is blank-padded and accepts `'xx '`, `'123'`, or lowercase; the CHECK costs nothing and prevents a `'thb'`/`'THB'` split that would silently fragment every group-by.
 2. **This does not need to block the migration.** The column exists either way — that is the expensive, irreversible part, and the design already includes it. Whether non-THB statements are *expected* only determines whether the v1 service **rejects** non-THB on write. Recommendation: ship the column, add a service guard rejecting anything but `THB` in v1, and note that relaxing a guard later is free whereas adding a column later is not. This removes SA-9 from the critical path without weakening it — the admin's answer can arrive during 6A.
 3. The commerce summary must **never** produce a total across currencies even if the guard is later relaxed. Assert it with a test that seeds one THB and one non-THB row and asserts the response contains two groups and no scalar grand total.
 
@@ -328,7 +328,7 @@ Each tied to a sub-phase. **A1–A6 and B1–B7 are the sign-off conditions**; C
 3. **A5** — commerce retention + erasure-procedure position written into the 6.0.6 policy doc. *(6.0.6)*
 4. **A1** — `statementRef` pattern `^[A-Za-z0-9][A-Za-z0-9._\-\/]{0,63}$`, no space. *(6.0.6 decision, 6A.7 code)*
 5. **A4** — `note` capped at 200 characters. *(6.0.2 — must be in the migration)*
-6. **SA-9 / C1** — `CHECK (currency ~ '^[A-Z]{3}$')` on all money-bearing tables; ship the column, guard non-THB in the service. *(6.0.2)*
+6. **SA-9 / C1** — `CHECK (currency ~ '^[A-Z]{3}$')` on all money-bearing tables — **two of them: `commerce_products` and `commerce_conversions`** (see §-correction above); ship the column, guard non-THB in the service. *(6.0.2)*
 7. **SA-2 / C2** — `CHECK (reversal_of_id <> id)`; service validates channel+currency match. *(6.0.2)*
 8. **B3, B4, B5, B6** — boundary-scan exclusion removed and fixture relocated; ESLint zones extended; frozen CSV headers; frontend lint zone. *(6.0.7)*
 

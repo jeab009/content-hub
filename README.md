@@ -120,9 +120,32 @@ browser bundle).
 ## Running tests
 
 ```bash
-cd backend && npm test        # 30 unit tests: auth, OAuth state, token encryption, ownership, redaction
+cd backend && npm test        # unit suite (mocked Prisma — safe against any database)
 cd frontend && npm run lint && npm run typecheck && npm run build
 ```
+
+### `npm run test:e2e` — needs its own throwaway database
+
+The Phase 6 separation suite (`backend/test/*.e2e-spec.ts`) runs against a **real**
+Postgres and `TRUNCATE`s **every** application table between runs — `users`,
+`contents`, `posts`, not just the commerce ones. Pointing it at the Docker Compose
+demo database erases your demo data.
+
+The harness refuses to run unless the database **name ends in `e2e`**. Create one
+once, then use it:
+
+```bash
+docker compose exec postgres psql -U content_hub -d postgres \
+  -c "CREATE DATABASE content_hub_e2e OWNER content_hub;"
+
+cd backend
+export DATABASE_URL='postgresql://content_hub:content_hub@localhost:5432/content_hub_e2e?schema=public'
+npx prisma migrate deploy
+npm run test:e2e
+```
+
+`ALLOW_E2E_TRUNCATE=1` overrides the name check. Do not set it against the demo
+database.
 
 ## Scripts reference (backend)
 

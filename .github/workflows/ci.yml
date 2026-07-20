@@ -87,7 +87,20 @@ jobs:
   #
   # It also runs against a database the unit job never touches, because this
   # suite TRUNCATES every table between runs — sharing a database with the unit
-  # job would be a race waiting to happen.
+  # job would be a race waiting to happen. `POSTGRES_DB` must stay named
+  # `*_e2e`: `src/testing/e2e/e2e-database.ts` refuses to truncate anything
+  # else (BUG-P6-01).
+  #
+  # NO `redis` SERVICE HERE, DELIBERATELY (DevOps DEVOPS-2, resolved).
+  # This job needs none. The suite never boots the Nest application:
+  # `src/testing/e2e/capture-baseline.ts` constructs the five services it
+  # exercises by hand (`new RankingEngineV2Service(...)`, `new
+  # DashboardService(prisma)`, `new ReportExportService(prisma)`, `new
+  # AuditLogService(prisma)`) over a bare `PrismaClient`. None of those
+  # classes, nor `PrismaService`, references Bull/ioredis/`@InjectQueue` —
+  # verified by grep. Adding a redis service would be cargo cult; if a future
+  # e2e spec ever calls `Test.createTestingModule({ imports: [AppModule] })`,
+  # add one then, because the queue module does connect on boot.
   separation-e2e:
     name: Backend (commerce/payout separation, real DB)
     runs-on: ubuntu-latest
