@@ -69,6 +69,13 @@ export const envValidationSchema = Joi.object({
   // .env keeps today's behavior. Flipped to 'v2' only after QA verifies it.
   RANKING_ENGINE: Joi.string().valid('v1', 'v2').default('v2'),
 
+  // Phase 6 commerce adapter flags — MUST default to 'mock', mirroring
+  // PUBLISHER_IMPL_*. See main.ts's assertAdapterFlagsAreSafe (System Analyst
+  // SA-7): booting with a non-mock value outside NODE_ENV=production refuses
+  // to start. Live impls are rejecting stubs — no HTTP client exists.
+  COMMERCE_IMPL_SHOPEE: Joi.string().valid('mock', 'shopee').default('mock'),
+  COMMERCE_IMPL_TIKTOK_SHOP: Joi.string().valid('mock', 'tiktok_shop').default('mock'),
+
   // Phase 4 sentiment classifier gate — MUST default to 'rule_based'. The
   // self-hosted model ('model') is a flagged 4C tail, shipped disabled.
   SENTIMENT_IMPL: Joi.string().valid('rule_based', 'model').default('rule_based'),

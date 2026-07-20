@@ -30,6 +30,7 @@ export class ContentAssetService {
         platform: dto.platform,
         aspectRatio: dto.aspectRatio,
         mediaUrl: dto.mediaUrl,
+        durationSeconds: dto.durationSeconds ?? null,
       },
     });
 

@@ -67,12 +67,21 @@ describe('ContentAssetService', () => {
           platform: AssetPlatform.tiktok,
           aspectRatio: AspectRatio.ratio_9_16,
           mediaUrl: OWNED_MEDIA_URL,
+          durationSeconds: null,
         },
       });
       expect(asset).toEqual(storedAsset);
       expect(auditLog.record).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'content_asset_added', result: 'success' }),
       );
+    });
+
+    it('carries a client-supplied durationSeconds through to the asset row (Phase 6, 6A.6)', async () => {
+      await service.add('content-1', buildDto({ durationSeconds: 42 }), 'user-1');
+
+      expect(prisma.contentAsset.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ durationSeconds: 42 }),
+      });
     });
 
     it('throws NotFound when the parent content does not exist', async () => {

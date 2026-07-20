@@ -27,10 +27,10 @@ import { AuditLogService } from '../../common/audit/audit-log.service';
 import { ContentService } from './content.service';
 import { ContentAssetService } from './content-asset.service';
 import {
-  AllowedMimeSpec,
   FileTooLargeError,
   UnsupportedFileTypeError,
   UploadValidationService,
+  ValidatedUpload,
 } from './upload-validation.service';
 import { STORAGE_ADAPTER, StorageAdapter } from './storage/storage-adapter.interface';
 import { CreateContentDto } from './dto/create-content.dto';
@@ -99,7 +99,7 @@ export class ContentController {
       throw new BadRequestException('Missing multipart file field "file"');
     }
 
-    let validated: AllowedMimeSpec;
+    let validated: ValidatedUpload;
     try {
       validated = this.uploadValidationService.validate(file.buffer);
     } catch (error) {
@@ -118,7 +118,7 @@ export class ContentController {
       meta: { mediaUrl: stored.mediaUrl, mimeType: stored.mimeType, bytes: stored.fileSizeBytes },
     });
 
-    return stored;
+    return { ...stored, durationSeconds: validated.durationSeconds };
   }
 
   @Get()

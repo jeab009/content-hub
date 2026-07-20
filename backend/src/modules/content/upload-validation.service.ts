@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppConfig } from '../../config/configuration';
+import { parseMp4DurationSeconds } from './mp4-duration';
 
 export interface AllowedMimeSpec {
   mimeType: string;
@@ -10,6 +11,20 @@ export interface AllowedMimeSpec {
 
 export class UnsupportedFileTypeError extends Error {}
 export class FileTooLargeError extends Error {}
+
+/**
+ * Result of a validated upload (Phase 6, WBS 6A.6). Extends `AllowedMimeSpec`
+ * additively — every existing caller reading `.mimeType`/`.extension`/
+ * `.category` off `validate()`'s return value is unaffected.
+ */
+export interface ValidatedUpload extends AllowedMimeSpec {
+  /**
+   * Best-effort MP4 duration. `null` for every non-video upload AND for any
+   * video whose duration this parser could not read — NEVER a rejection
+   * reason (risk R7). Populated only for `category === 'video'`.
+   */
+  durationSeconds: number | null;
+}
 
 /**
  * Server-side allow-list of accepted upload types (security condition #1).
@@ -84,7 +99,7 @@ export class UploadValidationService {
    * before this method ever runs, so a maximally-oversized non-matching
    * upload never gets fully buffered in memory in the first place.
    */
-  validate(buffer: Buffer): AllowedMimeSpec {
+  validate(buffer: Buffer): ValidatedUpload {
     const detected = sniffMimeType(buffer);
     if (!detected) {
       throw new UnsupportedFileTypeError(
@@ -99,7 +114,12 @@ export class UploadValidationService {
       );
     }
 
-    return detected;
+    // Best-effort, never blocking (risk R7): a parse failure yields null,
+    // never a throw, so this can never turn into a new rejection path for
+    // Facebook/YouTube/TikTok/LINE uploads, none of which have a duration rule.
+    const durationSeconds = detected.category === 'video' ? parseMp4DurationSeconds(buffer) : null;
+
+    return { ...detected, durationSeconds };
   }
 
   get streamLevelMaxBytes(): number {

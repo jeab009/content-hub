@@ -6,6 +6,7 @@ export class ContentAssetResponseDto {
   platform!: string;
   aspectRatio!: string;
   mediaUrl!: string;
+  durationSeconds!: number | null;
   createdAt!: Date;
 
   static fromEntity(asset: ContentAsset): ContentAssetResponseDto {
@@ -15,6 +16,7 @@ export class ContentAssetResponseDto {
     dto.platform = asset.platform;
     dto.aspectRatio = asset.aspectRatio;
     dto.mediaUrl = asset.mediaUrl;
+    dto.durationSeconds = asset.durationSeconds;
     dto.createdAt = asset.createdAt;
     return dto;
   }

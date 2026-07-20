@@ -61,6 +61,14 @@ export interface AppConfig {
     // score row is tagged with the engine that produced it either way.
     engine: 'v1' | 'v2';
   };
+  commerce: {
+    // Mirrors PUBLISHER_IMPL_* exactly (Phase 6, System Analyst SA-7): MUST
+    // default to 'mock' everywhere except an explicit production opt-in — see
+    // assertAdapterFlagsAreSafe in main.ts. Live impls are rejecting stubs;
+    // no HTTP client exists for either channel (Decision 5, out of scope).
+    shopeeImpl: 'mock' | 'shopee';
+    tiktokShopImpl: 'mock' | 'tiktok_shop';
+  };
   sentiment: {
     // 'rule_based' (default, offline, deterministic) | 'model' (self-hosted, flagged).
     // Mirrors the PUBLISHER_IMPL_* mock/live gate. CI + demo never set it, so the
@@ -150,6 +158,10 @@ export default (): { app: AppConfig } => ({
       // RANKING_ENGINE=v1 to roll back — reads are engine-scoped both ways, so
       // a rollback ignores v2 rows rather than blending them.
       engine: (process.env.RANKING_ENGINE ?? 'v2') as 'v1' | 'v2',
+    },
+    commerce: {
+      shopeeImpl: (process.env.COMMERCE_IMPL_SHOPEE ?? 'mock') as 'mock' | 'shopee',
+      tiktokShopImpl: (process.env.COMMERCE_IMPL_TIKTOK_SHOP ?? 'mock') as 'mock' | 'tiktok_shop',
     },
     sentiment: {
       // MUST default to 'rule_based' — the self-hosted model (4C) is a flagged
