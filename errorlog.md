@@ -203,6 +203,14 @@ QA subagent 2 รอบติดไม่มี browser tools และ**ปฏ�
 2. Convention: a review document may not be committed with the source it reviews.
 3. `scripts/check-review-authorship.sh` enforces #2 mechanically — wired to `.githooks/pre-commit` and a CI job. Verified: rejects `f0f5705` (the real offending commit), passes docs-only commits, and blocks a live probe commit.
 
+**Where the rule now lives (22 files, outside this repo):**
+- `~/.claude/agents/senior-*.md` (9) — `## Role boundary`, each naming that role's own deliverable
+- `~/Desktop/skills/Agent/skills/0*/SKILL.md` (9) — `### Authorship boundary`, placed directly after each Deliverables table so the table reads as a limit, not just a list
+- `~/Desktop/skills/Agent/commands/loop.md` — **orchestrator duties**: state the boundary in every dispatch prompt, verify authorship with `git log -1 -- <file>` before trusting a review, never let an upstream agent fill a missing downstream document, and re-verify claims personally after any agent is cut off mid-run
+- `~/Desktop/skills/Agent/loop-engineering-team/SKILL.md` + `skills/MASTER_PROMPT{,_TH}.md` — the combined/all-in-one prompts
+
+The role→document mapping is stated identically in all of them, and the Developer row reads **"none — code, migrations, tests; hands off in its reply"**, which is the specific gap the incident exploited.
+
 - **Independently re-verified by the orchestrator** (not taken from those docs): 467 unit tests pass (45 suites), **14/14 e2e separation tests pass** against a disposable `content_hub_e2e` database, lint + typecheck clean. The exit-criterion-#6 byte-identity proof genuinely holds: commerce seeded + re-rank → payout endpoints, revenue CSV bytes and every `ranking_scores.score` unchanged.
 - The e2e suite has a real safety guard: it refuses to run unless the database name ends in `e2e`, because it TRUNCATEs every table — it would have wiped the demo data otherwise.
 - The NULL-safe Shopee duration CHECK is live and tested ("null is a rejection, not a pass"), as is `reversal_of_id <> id`.
