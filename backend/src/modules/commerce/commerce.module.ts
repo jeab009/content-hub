@@ -16,6 +16,7 @@ import { CommerceCatalogService } from './commerce-catalog.service';
 import { PostAnchorsController } from './post-anchors.controller';
 import { CommercePlacementController } from './commerce-placement.controller';
 import { CommerceAnchorService } from './commerce-anchor.service';
+import { CommercePlacementService } from './commerce-placement.service';
 
 /**
  * Commerce / affiliate module (6A). The ThrottlerModule registration below
@@ -58,6 +59,7 @@ import { CommerceAnchorService } from './commerce-anchor.service';
     TikTokShopAdapter,
     CommerceCatalogService,
     CommerceAnchorService,
+    CommercePlacementService,
     AdminGuard,
   ],
   exports: [CommerceAdapterRegistry],
