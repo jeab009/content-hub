@@ -12,6 +12,7 @@ const NAV_LINKS = [
   { href: '/content', label: 'Content' },
   { href: '/scheduler', label: 'Scheduler' },
   { href: '/posts', label: 'Posts' },
+  { href: '/commerce', label: 'Commerce' },
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/comments', label: 'Comments' },
   { href: '/settings', label: 'Settings' },

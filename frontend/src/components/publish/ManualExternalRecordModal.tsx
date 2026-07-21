@@ -16,6 +16,20 @@ import {
   isValidExternalPostUrl,
 } from '@/lib/publish-logic';
 import { ScoreReasoning } from '@/components/publish/ScoreReasoning';
+import {
+  AnchorPicker,
+  EMPTY_ANCHOR_SELECTION,
+  toAnchorsInput,
+  type AnchorPickerValue,
+} from '@/components/commerce/AnchorPicker';
+
+/**
+ * The anchor picker only applies to TikTok posts (design §4.7's "unified
+ * TikTok anchor flow") — anchoring a product to a Facebook/YouTube/LINE OA
+ * post has no commerce meaning today, and TikTok Shop is the one channel
+ * whose products are pinned on the same native post this modal records.
+ */
+const ANCHORABLE_PLATFORM: AssetPlatform = 'tiktok';
 
 interface ManualExternalRecordModalProps {
   contentId: string;
@@ -84,6 +98,10 @@ export function ManualExternalRecordModal(props: ManualExternalRecordModalProps)
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Post | null>(null);
+  const [anchorSelection, setAnchorSelection] = useState<AnchorPickerValue>(EMPTY_ANCHOR_SELECTION);
+  const [anchoredCount, setAnchoredCount] = useState<number | null>(null);
+  const [anchorError, setAnchorError] = useState<string | null>(null);
+  const [isAnchoring, setIsAnchoring] = useState(false);
 
   const selectedScore = useMemo(
     () => scores.find((row) => row.platform === selected) ?? null,
@@ -99,10 +117,39 @@ export function ManualExternalRecordModal(props: ManualExternalRecordModalProps)
     overrideReason,
   });
 
+  const wantsAnchoring = selected === ANCHORABLE_PLATFORM && anchorSelection.order.length > 0;
+
+  /**
+   * Step 2 of the unified TikTok anchor flow (design §4.7) — anchors the
+   * already-recorded post. Called both right after the record succeeds and
+   * from "Retry anchoring": it never re-issues the record call (which would
+   * 409 anyway) and never asks for the password again, since anchoring
+   * carries no step-up (SA-3).
+   */
+  async function runAnchoring(post: Post): Promise<void> {
+    setIsAnchoring(true);
+    setAnchorError(null);
+    try {
+      const anchors = await apiClient.anchorProductsToPost(
+        post.id,
+        { anchors: toAnchorsInput(anchorSelection) },
+        csrfToken,
+      );
+      setAnchoredCount(anchors.length);
+    } catch (err) {
+      setAnchorError(
+        err instanceof ApiError ? err.message : 'Failed to anchor the selected products.',
+      );
+    } finally {
+      setIsAnchoring(false);
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (!canSubmit) return;
     setError(null);
+    setAnchorError(null);
     setIsSubmitting(true);
     try {
       const post = await apiClient.recordManualExternalPost(
@@ -116,8 +163,14 @@ export function ManualExternalRecordModal(props: ManualExternalRecordModalProps)
         },
         csrfToken,
       );
+      // The parent refreshes on record success REGARDLESS of the anchor
+      // outcome (design §4.7) — deferring this to full success would make a
+      // partial failure look like nothing happened.
       setResult(post);
       props.onRecorded(post);
+      if (wantsAnchoring) {
+        await runAnchoring(post);
+      }
     } catch (err) {
       const described = describeError(err);
       setError(described.message);
@@ -145,8 +198,16 @@ export function ManualExternalRecordModal(props: ManualExternalRecordModalProps)
             </h2>
             <button type="button" className="btn-close" aria-label="Close" onClick={props.onClose} />
           </div>
-          {result ? (
-            <RecordResult post={result} onClose={props.onClose} />
+          {result && anchorError ? (
+            <PartialFailureResult
+              post={result}
+              anchorError={anchorError}
+              isAnchoring={isAnchoring}
+              onRetryAnchor={() => void runAnchoring(result)}
+              onClose={props.onClose}
+            />
+          ) : result ? (
+            <RecordResult post={result} anchoredCount={anchoredCount} onClose={props.onClose} />
           ) : (
             <form onSubmit={(e) => void handleSubmit(e)} noValidate>
               <div className="modal-body">
@@ -240,6 +301,17 @@ export function ManualExternalRecordModal(props: ManualExternalRecordModalProps)
                   </div>
                 )}
 
+                {selected === ANCHORABLE_PLATFORM && (
+                  <div className="mb-3">
+                    <AnchorPicker
+                      channel="tiktok_shop"
+                      value={anchorSelection}
+                      onChange={setAnchorSelection}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                )}
+
                 <div className="mb-3">
                   <label htmlFor="manual-password" className="form-label">
                     Your password (step-up re-auth) <span className="text-danger">*</span>
@@ -266,7 +338,13 @@ export function ManualExternalRecordModal(props: ManualExternalRecordModalProps)
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-danger" disabled={!canSubmit || isSubmitting}>
-                  {isSubmitting ? 'Recording…' : 'Record post'}
+                  {isSubmitting
+                    ? isAnchoring
+                      ? `Anchoring ${anchorSelection.order.length} product${anchorSelection.order.length === 1 ? '' : 's'}… (step 2 of 2)`
+                      : wantsAnchoring
+                        ? 'Recording post… (step 1 of 2)'
+                        : 'Recording…'
+                    : 'Record post'}
                 </button>
               </div>
             </form>
@@ -317,12 +395,23 @@ function RecommendationSummary(props: {
   );
 }
 
-function RecordResult({ post, onClose }: { post: Post; onClose: () => void }): JSX.Element {
+function RecordResult({
+  post,
+  anchoredCount,
+  onClose,
+}: {
+  post: Post;
+  anchoredCount: number | null;
+  onClose: () => void;
+}): JSX.Element {
   return (
     <>
       <div className="modal-body">
         <div className="alert alert-success" role="status">
           External post recorded and audited.
+          {anchoredCount !== null && anchoredCount > 0 && (
+            <> {anchoredCount} product{anchoredCount === 1 ? '' : 's'} anchored.</>
+          )}
         </div>
         <dl className="row mb-0">
           <dt className="col-4">Platform</dt>
@@ -352,6 +441,53 @@ function RecordResult({ post, onClose }: { post: Post; onClose: () => void }): J
       <div className="modal-footer">
         <button type="button" className="btn btn-primary" onClick={onClose}>
           Done
+        </button>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Partial-failure state (design §4.7): the post IS recorded — never a
+ * silent success, never a toast pretending both steps finished. Retry
+ * re-issues ONLY the anchor call against the already-created post id; it
+ * never re-submits the post record (which would 409) and never asks for the
+ * password again (anchoring carries no step-up). "Leave for now" is a
+ * legitimate exit, not a hidden failure — the post stays recorded and
+ * reachable, and its Posts-page row shows a "No products anchored" chip
+ * with its own inline retry.
+ */
+function PartialFailureResult(props: {
+  post: Post;
+  anchorError: string;
+  isAnchoring: boolean;
+  onRetryAnchor: () => void;
+  onClose: () => void;
+}): JSX.Element {
+  return (
+    <>
+      <div className="modal-body">
+        <div className="alert alert-warning" role="alert">
+          <p className="fw-semibold mb-2">Partly saved — one step still to do</p>
+          <p className="mb-1">✓ Post recorded — {labels.postPlatform(props.post.platform)}</p>
+          <p className="mb-2">✗ Products not anchored — {props.anchorError}</p>
+          <p className="small mb-0">
+            The post is saved. Your password is not needed again — anchoring is a separate,
+            unaudited-as-publish step.
+          </p>
+        </div>
+      </div>
+      <div className="modal-footer">
+        <button type="button" className="btn btn-outline-secondary" onClick={props.onClose}>
+          Leave for now
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={props.isAnchoring}
+          onClick={props.onRetryAnchor}
+        >
+          {props.isAnchoring ? 'Retrying…' : 'Retry anchoring'}
         </button>
       </div>
     </>

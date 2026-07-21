@@ -124,6 +124,13 @@ export interface ContentAsset {
   platform: AssetPlatform;
   aspectRatio: AspectRatio;
   mediaUrl: string;
+  /**
+   * Best-effort MP4 duration (Phase 6 / WBS 6A.6) — null for images and any
+   * video whose duration could not be parsed. COURTESY ONLY: the Shopee
+   * placement boundary re-validates fail-closed server-side rather than
+   * trusting this value.
+   */
+  durationSeconds: number | null;
   createdAt: string;
 }
 
@@ -131,6 +138,8 @@ export interface UploadResult {
   mediaUrl: string;
   fileSizeBytes: number;
   mimeType: string;
+  /** Best-effort MP4 duration, courtesy only — see ContentAsset.durationSeconds. */
+  durationSeconds: number | null;
 }
 
 /** Only the params the backend list query DTO accepts — anything else 400s. */
@@ -181,6 +190,8 @@ export interface CreateContentAssetInput {
   platform: AssetPlatform;
   aspectRatio: AspectRatio;
   mediaUrl: string;
+  /** Carried over verbatim from the upload response for this same file (courtesy only). */
+  durationSeconds?: number;
 }
 
 // --- Ranking / Scheduler / Publish domain types (Pass C2). String unions
@@ -483,7 +494,13 @@ export interface ContentRevenueDrilldown {
 // a top-level navigation to the backend origin still carries it, and the
 // browser handles the download natively. ---
 
-/** Only the filters ReportQueryDto accepts — anything else 400s. */
+/**
+ * Only the filters ReportQueryDto accepts — anything else 400s. `channel` and
+ * the commerce-flavoured `productId` are ONLY valid for `report: 'commerce'`
+ * (CommerceReportQueryDto, a deliberately separate shape — see
+ * commerce-report-query.dto.ts's docblock on why it doesn't import
+ * ReportQueryDto across the commerce/reports ESLint zone).
+ */
 export interface ReportQuery {
   /** ISO-8601 date bounding the start of the reporting period. */
   from?: string;
@@ -491,9 +508,13 @@ export interface ReportQuery {
   to?: string;
   platform?: AssetPlatform;
   contentId?: string;
+  /** commerce.csv only. */
+  channel?: CommerceChannel;
+  /** commerce.csv only (the payout reports key on contentId instead). */
+  productId?: string;
 }
 
-export type ReportName = 'revenue' | 'override-log' | 'comment-summary';
+export type ReportName = 'revenue' | 'override-log' | 'comment-summary' | 'commerce';
 
 function buildReportQuery(query: ReportQuery = {}): string {
   const params = new URLSearchParams();
@@ -501,6 +522,310 @@ function buildReportQuery(query: ReportQuery = {}): string {
   if (query.to) params.set('to', query.to);
   if (query.platform) params.set('platform', query.platform);
   if (query.contentId) params.set('contentId', query.contentId);
+  if (query.channel) params.set('channel', query.channel);
+  if (query.productId) params.set('productId', query.productId);
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
+// --- Commerce / Affiliate (Phase 6) domain types. String unions mirror the
+// backend Prisma enums / DTOs exactly (backend/prisma/schema.prisma +
+// backend/src/modules/commerce/dto/*) — keep them in sync.
+//
+// SEPARATION NOTE (design §2.5): these types intentionally share NO field
+// name with the payout vocabulary (DashboardOverview/DashboardRevenue above)
+// — `commissionAmount`/`grossSalesAmount` here, `revenue` there. No type here
+// is ever named `revenue`, and no component may be handed both.
+
+export type CommerceChannel = 'shopee' | 'tiktok_shop';
+export type CommerceSource = 'manual' | 'api';
+export type CommercePlacementStatus = 'recorded' | 'removed';
+
+/** API shape of a commerce_products row. */
+export interface CommerceProduct {
+  id: string;
+  channel: CommerceChannel;
+  externalProductId: string;
+  name: string;
+  sku: string | null;
+  productUrl: string | null;
+  listPrice: number | null;
+  currency: string;
+  commissionRatePct: number | null;
+  isActive: boolean;
+  retiredAt: string | null;
+  source: CommerceSource;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** API shape of an affiliate_links row. No `channel` — inherited from the product (ADR-6.6). */
+export interface AffiliateLink {
+  id: string;
+  productId: string;
+  url: string;
+  trackingCode: string | null;
+  subId: string | null;
+  isActive: boolean;
+  retiredAt: string | null;
+  source: CommerceSource;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** API shape of a product_anchors row. Exactly one of postId/placementId is set. */
+export interface ProductAnchor {
+  id: string;
+  postId: string | null;
+  placementId: string | null;
+  productId: string;
+  affiliateLinkId: string | null;
+  anchorPosition: number | null;
+  anchoredAt: string;
+  removedAt: string | null;
+  source: CommerceSource;
+  recordedBy: string;
+  createdAt: string;
+}
+
+/** API shape of a commerce_placements row (a recorded Shopee video). */
+export interface CommercePlacement {
+  id: string;
+  contentId: string;
+  channel: CommerceChannel;
+  externalMediaId: string;
+  externalUrl: string | null;
+  status: CommercePlacementStatus;
+  publishMethod: PublishMethod;
+  sourceAssetId: string | null;
+  mediaUrl: string | null;
+  durationSeconds: number | null;
+  note: string | null;
+  version: number;
+  source: CommerceSource;
+  recordedBy: string;
+  placedAt: string;
+  removedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** API shape of a commerce_conversions row — one append-only commission entry. */
+export interface CommerceConversion {
+  id: string;
+  channel: CommerceChannel;
+  periodStart: string;
+  periodEnd: string;
+  ordersCount: number | null;
+  itemsSold: number | null;
+  grossSalesAmount: number | null;
+  commissionAmount: number;
+  currency: string;
+  postId: string | null;
+  placementId: string | null;
+  productId: string | null;
+  affiliateLinkId: string | null;
+  statementRef: string | null;
+  reversalOfId: string | null;
+  source: CommerceSource;
+  recordedBy: string;
+  createdAt: string;
+}
+
+/** One currency's aggregate (System Analyst SA-9 — NEVER summed across currencies). */
+export interface CommerceCurrencyTotal {
+  currency: string;
+  commissionAmount: number;
+  grossSalesAmount: number;
+  ordersCount: number;
+  itemsSold: number;
+  conversionRecords: number;
+}
+
+export interface CommerceChannelBreakdownItem extends CommerceCurrencyTotal {
+  channel: CommerceChannel;
+}
+
+/** `productId: null` buckets every unattributed conversion — a normal, expected case. */
+export interface CommerceProductBreakdownItem extends CommerceCurrencyTotal {
+  productId: string | null;
+}
+
+export interface CommercePeriodBreakdownItem extends CommerceCurrencyTotal {
+  periodStart: string;
+  periodEnd: string;
+}
+
+/** Matches CommerceSummaryDto — GET /api/commerce/summary. Reads commerce_conversions ONLY. */
+export interface CommerceSummary {
+  generatedAt: string;
+  totals: CommerceCurrencyTotal[];
+  byChannel: CommerceChannelBreakdownItem[];
+  byProduct: CommerceProductBreakdownItem[];
+  byPeriod: CommercePeriodBreakdownItem[];
+}
+
+/** Matches ContentCommerceSummaryDto — GET /api/commerce/summary/:contentId. */
+export interface ContentCommerceSummary {
+  generatedAt: string;
+  contentId: string;
+  totals: CommerceCurrencyTotal[];
+  placements: CommercePlacement[];
+  conversions: CommerceConversion[];
+}
+
+/** Only the params ListProductsQueryDto accepts — anything else 400s. */
+export interface ListCommerceProductsQuery {
+  channel?: CommerceChannel;
+  isActive?: boolean;
+  q?: string;
+}
+
+/** Body of POST /api/commerce/products. */
+export interface CreateCommerceProductInput {
+  channel: CommerceChannel;
+  externalProductId: string;
+  name: string;
+  sku?: string;
+  productUrl?: string;
+  listPrice?: number;
+  currency?: string;
+  commissionRatePct?: number;
+}
+
+/** Body of PATCH /api/commerce/products/:id — channel/externalProductId are NOT editable. */
+export type UpdateCommerceProductInput = Partial<{
+  name: string;
+  sku: string;
+  productUrl: string;
+  listPrice: number;
+  currency: string;
+  commissionRatePct: number;
+}>;
+
+/** Body of POST /api/commerce/products/:id/links — no `channel`, it is inherited. */
+export interface CreateAffiliateLinkInput {
+  url: string;
+  trackingCode?: string;
+  subId?: string;
+}
+
+/**
+ * One product to anchor, paired with the affiliate link that earned the
+ * attribution. Object form (matches RecordProductAnchorsDto / AnchorItemDto)
+ * — NOT two parallel arrays, so there is no index-alignment class of bug.
+ */
+export interface AnchorItemInput {
+  productId: string;
+  affiliateLinkId?: string;
+}
+
+/** Body of POST /api/posts/:id/product-anchors and the placement equivalent. */
+export interface RecordProductAnchorsInput {
+  anchors: AnchorItemInput[];
+}
+
+/**
+ * Body of POST /api/commerce/placements/manual-external. Mirrors
+ * RecordCommercePlacementDto field-for-field — note `externalMediaId`
+ * (NOT `externalPostId`, which 400s: this DTO is Shopee-shaped, not the
+ * publish module's post DTO).
+ */
+export interface RecordCommercePlacementInput {
+  contentId: string;
+  channel: CommerceChannel;
+  externalMediaId: string;
+  externalUrl?: string;
+  durationSeconds?: number;
+  sourceAssetId?: string;
+  password: string;
+  note?: string;
+}
+
+/** Only the params ListPlacementsQueryDto accepts. */
+export interface ListCommercePlacementsQuery {
+  channel?: CommerceChannel;
+  status?: CommercePlacementStatus;
+  contentId?: string;
+}
+
+/** Body of POST /api/commerce/conversions — APPEND-ONLY. Reversals are new negative rows. */
+export interface CreateCommerceConversionInput {
+  channel: CommerceChannel;
+  periodStart: string;
+  periodEnd: string;
+  ordersCount?: number;
+  itemsSold?: number;
+  grossSalesAmount?: number;
+  /** NEGATIVE IS LEGAL — a refund/reversal is a new row, never an edit. */
+  commissionAmount: number;
+  postId?: string;
+  placementId?: string;
+  productId?: string;
+  affiliateLinkId?: string;
+  reversalOfId?: string;
+  statementRef?: string;
+}
+
+/** Only the params ListConversionsQueryDto accepts. */
+export interface ListCommerceConversionsQuery {
+  channel?: CommerceChannel;
+  productId?: string;
+  placementId?: string;
+  postId?: string;
+}
+
+/** Query for GET /api/commerce/conversions/overlap-check — WARN-ONLY probe. */
+export interface OverlapCheckQuery {
+  channel: CommerceChannel;
+  periodStart: string;
+  periodEnd: string;
+}
+
+/** Query filters for GET /api/commerce/summary. */
+export interface CommerceSummaryQuery {
+  channel?: CommerceChannel;
+  productId?: string;
+  periodStart?: string;
+  periodEnd?: string;
+}
+
+function buildCommerceProductsQuery(query: ListCommerceProductsQuery = {}): string {
+  const params = new URLSearchParams();
+  if (query.channel) params.set('channel', query.channel);
+  if (query.isActive !== undefined) params.set('isActive', String(query.isActive));
+  if (query.q) params.set('q', query.q);
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
+function buildCommercePlacementsQuery(query: ListCommercePlacementsQuery = {}): string {
+  const params = new URLSearchParams();
+  if (query.channel) params.set('channel', query.channel);
+  if (query.status) params.set('status', query.status);
+  if (query.contentId) params.set('contentId', query.contentId);
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
+function buildCommerceConversionsQuery(query: ListCommerceConversionsQuery = {}): string {
+  const params = new URLSearchParams();
+  if (query.channel) params.set('channel', query.channel);
+  if (query.productId) params.set('productId', query.productId);
+  if (query.placementId) params.set('placementId', query.placementId);
+  if (query.postId) params.set('postId', query.postId);
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
+function buildCommerceSummaryQuery(query: CommerceSummaryQuery = {}): string {
+  const params = new URLSearchParams();
+  if (query.channel) params.set('channel', query.channel);
+  if (query.productId) params.set('productId', query.productId);
+  if (query.periodStart) params.set('periodStart', query.periodStart);
+  if (query.periodEnd) params.set('periodEnd', query.periodEnd);
   const qs = params.toString();
   return qs ? `?${qs}` : '';
 }
@@ -806,4 +1131,136 @@ export const apiClient = {
   /** PDPA data-subject erasure — single-comment hard-delete (CSRF only, 204). */
   eraseComment: (id: string, csrfToken: string) =>
     request<void>(`/api/comments/${id}`, { method: 'DELETE', csrfToken }),
+
+  // --- Commerce / Affiliate endpoints (Phase 6). No step-up except the
+  // placement record route (SA-3: catalog/link/anchor/conversion maintenance
+  // pushes nothing live and records no override fact). ---
+
+  listCommerceProducts: (query?: ListCommerceProductsQuery) =>
+    request<CommerceProduct[]>(`/api/commerce/products${buildCommerceProductsQuery(query)}`),
+
+  createCommerceProduct: (body: CreateCommerceProductInput, csrfToken: string) =>
+    request<CommerceProduct>('/api/commerce/products', { method: 'POST', body, csrfToken }),
+
+  updateCommerceProduct: (id: string, body: UpdateCommerceProductInput, csrfToken: string) =>
+    request<CommerceProduct>(`/api/commerce/products/${id}`, {
+      method: 'PATCH',
+      body,
+      csrfToken,
+    }),
+
+  /** Soft-retire (isActive=false) — never a hard delete. */
+  retireCommerceProduct: (id: string, csrfToken: string) =>
+    request<CommerceProduct>(`/api/commerce/products/${id}/retire`, {
+      method: 'POST',
+      csrfToken,
+    }),
+
+  listAffiliateLinks: (productId: string) =>
+    request<AffiliateLink[]>(`/api/commerce/products/${productId}/links`),
+
+  createAffiliateLink: (productId: string, body: CreateAffiliateLinkInput, csrfToken: string) =>
+    request<AffiliateLink>(`/api/commerce/products/${productId}/links`, {
+      method: 'POST',
+      body,
+      csrfToken,
+    }),
+
+  /** Soft-retire a link — never a hard delete. */
+  retireAffiliateLink: (id: string, csrfToken: string) =>
+    request<AffiliateLink>(`/api/commerce/links/${id}/retire`, { method: 'POST', csrfToken }),
+
+  // --- Product anchors — TWO hosts (a post, or a commerce placement). No
+  // step-up (SA-3): anchoring records no override fact and pushes nothing
+  // live. ---
+
+  listPostProductAnchors: (postId: string) =>
+    request<ProductAnchor[]>(`/api/posts/${postId}/product-anchors`),
+
+  anchorProductsToPost: (postId: string, body: RecordProductAnchorsInput, csrfToken: string) =>
+    request<ProductAnchor[]>(`/api/posts/${postId}/product-anchors`, {
+      method: 'POST',
+      body,
+      csrfToken,
+    }),
+
+  /** Soft-removes (removedAt) — never deletes, so re-anchoring keeps history. */
+  removePostProductAnchor: (postId: string, anchorId: string, csrfToken: string) =>
+    request<void>(`/api/posts/${postId}/product-anchors/${anchorId}`, {
+      method: 'DELETE',
+      csrfToken,
+    }),
+
+  listPlacementProductAnchors: (placementId: string) =>
+    request<ProductAnchor[]>(`/api/commerce/placements/${placementId}/product-anchors`),
+
+  anchorProductsToPlacement: (
+    placementId: string,
+    body: RecordProductAnchorsInput,
+    csrfToken: string,
+  ) =>
+    request<ProductAnchor[]>(`/api/commerce/placements/${placementId}/product-anchors`, {
+      method: 'POST',
+      body,
+      csrfToken,
+    }),
+
+  removePlacementProductAnchor: (placementId: string, anchorId: string, csrfToken: string) =>
+    request<void>(`/api/commerce/placements/${placementId}/product-anchors/${anchorId}`, {
+      method: 'DELETE',
+      csrfToken,
+    }),
+
+  // --- Commerce placements (Shopee) ---
+
+  /**
+   * Records a Shopee video placement already published natively (6A.5) —
+   * mirrors recordManualExternalPost 1:1. Errors worth handling distinctly:
+   * 401 wrong step-up password (retry in-modal), 403 not an admin,
+   * 409 duplicate active placement OR copyright gate not cleared,
+   * 422 duration null/out-of-range (10-60s inclusive), 429 throttled
+   * (5 attempts / 15 min).
+   */
+  recordCommercePlacement: (body: RecordCommercePlacementInput, csrfToken: string) =>
+    request<CommercePlacement>('/api/commerce/placements/manual-external', {
+      method: 'POST',
+      body,
+      csrfToken,
+    }),
+
+  listCommercePlacements: (query?: ListCommercePlacementsQuery) =>
+    request<CommercePlacement[]>(`/api/commerce/placements${buildCommercePlacementsQuery(query)}`),
+
+  // --- Commerce conversions (append-only — no PATCH/DELETE route exists) ---
+
+  createCommerceConversion: (body: CreateCommerceConversionInput, csrfToken: string) =>
+    request<CommerceConversion>('/api/commerce/conversions', {
+      method: 'POST',
+      body,
+      csrfToken,
+    }),
+
+  listCommerceConversions: (query?: ListCommerceConversionsQuery) =>
+    request<CommerceConversion[]>(
+      `/api/commerce/conversions${buildCommerceConversionsQuery(query)}`,
+    ),
+
+  /** Warn-only overlap probe for the entry form — debounce on date change. */
+  checkConversionOverlap: (query: OverlapCheckQuery) =>
+    request<{ overlaps: CommerceConversion[] }>(
+      `/api/commerce/conversions/overlap-check?${new URLSearchParams({
+        channel: query.channel,
+        periodStart: query.periodStart,
+        periodEnd: query.periodEnd,
+      }).toString()}`,
+    ),
+
+  // --- Commerce read model (separate from the payout dashboard endpoints
+  // above — reads commerce_conversions ONLY, never joined with metrics). ---
+
+  getCommerceSummary: (query?: CommerceSummaryQuery) =>
+    request<CommerceSummary>(`/api/commerce/summary${buildCommerceSummaryQuery(query)}`),
+
+  getContentCommerceSummary: (contentId: string) =>
+    request<ContentCommerceSummary>(`/api/commerce/summary/${contentId}`),
 };

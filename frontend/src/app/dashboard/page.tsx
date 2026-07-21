@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import {
   apiClient,
   ApiError,
@@ -16,6 +17,23 @@ import { formatCount, formatTHB, labels } from '@/lib/content-labels';
 import { AppHeader } from '@/components/AppHeader';
 import { TrendChart } from '@/components/dashboard/TrendChart';
 import { ExportCsvButton } from '@/components/reports/ExportCsvButton';
+
+/**
+ * Loaded via `next/dynamic` rather than a static `import` — deliberately.
+ * The commerce/payout ESLint zone (frontend/.eslintrc.js) bans every file
+ * under `src/app/dashboard/**` from a static import of anything under
+ * `components/commerce/**`, precisely so this file can never end up with
+ * both a `DashboardOverview` and a `CommerceSummary` in scope to add
+ * together. `next/dynamic` is not a loophole in that rule — the component
+ * fetches its OWN data (`GET /api/commerce/summary`) and receives no props
+ * from this page, so the two datasets are never both in memory here, static
+ * import or not (design §4.6 / ADR-6.8: no shared component, no combined
+ * total anywhere).
+ */
+const CommerceDashboardSection = dynamic(
+  () => import('@/components/commerce/CommerceDashboardSection').then((m) => m.CommerceDashboardSection),
+  { ssr: false, loading: () => <p className="text-muted small mt-4">Loading commerce data…</p> },
+);
 
 export default function DashboardPage(): JSX.Element {
   const router = useRouter();
@@ -130,8 +148,12 @@ export default function DashboardPage(): JSX.Element {
 
       {overview && (
         <>
+          <p className="text-muted small mb-2">
+            Monetization payout from Facebook, YouTube, TikTok and LINE OA. This is the figure the
+            ranking engine uses.
+          </p>
           <div className="row g-3 mb-4">
-            <KpiCard label="Revenue" value={formatTHB(overview.totals.revenue)} accent="text-success" />
+            <KpiCard label="Payout" value={formatTHB(overview.totals.revenue)} accent="text-success" />
             <KpiCard label="Reach" value={formatCount(overview.totals.reach)} />
             <KpiCard label="Engagement" value={formatCount(overview.totals.engagement)} />
             <KpiCard
@@ -219,6 +241,17 @@ export default function DashboardPage(): JSX.Element {
           )}
         </>
       )}
+
+      {/*
+        VERTICAL STACKING ONLY (design §4.6 signal 6) — this block renders
+        strictly BELOW the payout section above, at every width, never
+        side-by-side. Side-by-side reads as comparable-and-summable at every
+        width, which is exactly what this whole section exists to prevent —
+        see the "three widths" check in phase6-architecture-design.md §4.9,
+        especially 768px, where a naive grid most often floats two blocks
+        side by side by accident.
+      */}
+      <CommerceDashboardSection />
     </div>
   );
 }

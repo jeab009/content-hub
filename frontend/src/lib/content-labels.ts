@@ -2,6 +2,8 @@ import type {
   AspectRatio,
   AssetPlatform,
   CadencePaceStatus,
+  CommerceChannel,
+  CommercePlacementStatus,
   ContentPillar,
   ContentStatus,
   ContentType,
@@ -129,6 +131,32 @@ const METRIC_SOURCE_LABELS: Record<MetricSource, string> = {
   manual: 'Manual',
 };
 
+// --- Commerce / Affiliate (Phase 6). CommerceChannel is a NEW enum, distinct
+// from AssetPlatform/PostPlatform — never merged into those maps (ADR-6.2). ---
+
+export const COMMERCE_CHANNELS: CommerceChannel[] = ['shopee', 'tiktok_shop'];
+
+const CHANNEL_LABELS: Record<CommerceChannel, string> = {
+  shopee: 'Shopee',
+  tiktok_shop: 'TikTok Shop',
+};
+
+/** Colour PAIRED with text — colour is never the sole channel for channel identity. */
+const CHANNEL_BADGE: Record<CommerceChannel, string> = {
+  shopee: 'bg-warning text-dark',
+  tiktok_shop: 'bg-dark',
+};
+
+const PLACEMENT_STATUS_LABELS: Record<CommercePlacementStatus, string> = {
+  recorded: 'Recorded',
+  removed: 'Removed',
+};
+
+const PLACEMENT_STATUS_BADGE: Record<CommercePlacementStatus, string> = {
+  recorded: 'bg-success',
+  removed: 'bg-secondary',
+};
+
 /** THB currency, 2 dp (revenue = platform payout, makedown.md §6). */
 export function formatTHB(value: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -178,4 +206,9 @@ export const labels = {
   /** Falls back to the raw string for an engine version this build predates. */
   engineVersion: (value: string): string =>
     ENGINE_VERSION_LABELS[value as EngineVersion] ?? `Engine ${value}`,
+  channel: (value: CommerceChannel): string => CHANNEL_LABELS[value],
+  channelBadgeClass: (value: CommerceChannel): string => CHANNEL_BADGE[value],
+  placementStatus: (value: CommercePlacementStatus): string => PLACEMENT_STATUS_LABELS[value],
+  placementStatusBadgeClass: (value: CommercePlacementStatus): string =>
+    PLACEMENT_STATUS_BADGE[value],
 };

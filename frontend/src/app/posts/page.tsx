@@ -12,6 +12,14 @@ import {
 import { labels } from '@/lib/content-labels';
 import { AppHeader } from '@/components/AppHeader';
 import { ExportCsvButton } from '@/components/reports/ExportCsvButton';
+import { AnchorPickerModal } from '@/components/commerce/AnchorPickerModal';
+
+/**
+ * Anchoring only applies to TikTok posts (matches ManualExternalRecordModal's
+ * ANCHORABLE_PLATFORM decision — TikTok Shop is the one channel whose
+ * products are pinned on the same native post the admin recorded here).
+ */
+const ANCHORABLE_POST_PLATFORM = 'tiktok';
 
 const POST_STATUSES: PostStatus[] = [
   'draft',
@@ -43,11 +51,30 @@ export default function PostsPage(): JSX.Element {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const [anchorCounts, setAnchorCounts] = useState<Map<string, number>>(new Map());
+  const [anchorTarget, setAnchorTarget] = useState<Post | null>(null);
 
   const loadPosts = useCallback(
     async (status: PostStatus | '') => {
       try {
-        setPosts(await apiClient.listPosts(status || undefined));
+        const rows = await apiClient.listPosts(status || undefined);
+        setPosts(rows);
+        // Anchor counts are best-effort, TikTok posts only (see
+        // ANCHORABLE_POST_PLATFORM) — a failure here is non-fatal.
+        const counts = new Map<string, number>();
+        await Promise.all(
+          rows
+            .filter((post) => post.platform === ANCHORABLE_POST_PLATFORM)
+            .map(async (post) => {
+              try {
+                const anchors = await apiClient.listPostProductAnchors(post.id);
+                counts.set(post.id, anchors.length);
+              } catch {
+                // leave uncounted
+              }
+            }),
+        );
+        setAnchorCounts(counts);
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
           router.push('/login');
@@ -173,6 +200,7 @@ export default function PostsPage(): JSX.Element {
                 <th scope="col">Override</th>
                 <th scope="col">Posted at</th>
                 <th scope="col">External ID</th>
+                <th scope="col">Products</th>
                 <th scope="col" className="text-end">
                   Actions
                 </th>
@@ -214,7 +242,29 @@ export default function PostsPage(): JSX.Element {
                       (post.externalPostId ?? '—')
                     )}
                   </td>
+                  <td className="small">
+                    {post.platform === ANCHORABLE_POST_PLATFORM ? (
+                      (anchorCounts.get(post.id) ?? 0) > 0 ? (
+                        <span className="badge bg-info text-dark">
+                          Anchored ({anchorCounts.get(post.id)})
+                        </span>
+                      ) : (
+                        <span className="badge bg-secondary">No products anchored</span>
+                      )
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
+                  </td>
                   <td className="text-end">
+                    {post.platform === ANCHORABLE_POST_PLATFORM && (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-primary me-2"
+                        onClick={() => setAnchorTarget(post)}
+                      >
+                        Anchor products
+                      </button>
+                    )}
                     {RETRYABLE_STATUSES.includes(post.status) && (
                       <button
                         type="button"
@@ -290,6 +340,21 @@ export default function PostsPage(): JSX.Element {
           csrfToken={csrfToken}
           onClose={() => setPendingAction(null)}
           onDone={() => setPendingAction(null)}
+        />
+      )}
+
+      {anchorTarget && csrfToken && (
+        <AnchorPickerModal
+          heading={`Anchor products · ${titles.get(anchorTarget.contentId) ?? anchorTarget.contentId}`}
+          channel="tiktok_shop"
+          listExisting={() => apiClient.listPostProductAnchors(anchorTarget.id)}
+          onAnchor={(body) => apiClient.anchorProductsToPost(anchorTarget.id, body, csrfToken)}
+          onRemove={(anchorId) => apiClient.removePostProductAnchor(anchorTarget.id, anchorId, csrfToken)}
+          onClose={() => setAnchorTarget(null)}
+          onSaved={() => {
+            setAnchorTarget(null);
+            void loadPosts(statusFilter);
+          }}
         />
       )}
     </div>
