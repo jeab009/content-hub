@@ -61,6 +61,13 @@ Confirmed business rules only (not tech/design detail — see `makedown.md` for 
 - เก็บ requirement จากการใช้งานจริงระหว่าง Phase 2-5 → **ตัดสินใหม่ตอน Phase 5 จบ** ว่าคุ้มสร้างเป็น Phase 7 หรือไม่ (ดู pros/cons ใน suggestion.md)
 - ผลพวง: Meta App อยู่ branch Dev Mode ต่อได้ (ไม่ต้องขอ ads_management scope), `metric` table ไม่ต้อง split organic/paid ตอนนี้, ranking engine v1/v2 ใช้ organic signal เท่านั้นตามแผนเดิม
 
+### Phase 7 kickoff decision (2026-07-21)
+
+- Meta เปิด Ads AI Connectors MCP (open beta, 2026-04-29) เปลี่ยนต้นทุนฝั่ง campaign-creation แต่**ไม่ได้ทำให้ 8-week real-usage evidence window (เริ่ม 2026-07-20 ตาม `docs/phase6-project-plan.md` §7.1) หมดอายุ** — ยังไม่ครบ 8 สัปดาห์
+- **Admin confirm (2026-07-21): เริ่ม Phase 7 slice ที่เล็กสุด เปลี่ยนกลับได้ง่ายสุดตอนนี้ได้** — manual-entry paid/organic visibility เท่านั้น (อ่านอย่างเดียว ไม่มี live API, ไม่มี MCP coupling) เพราะข้อมูลที่กรอกเองจะกลายเป็นส่วนหนึ่งของ evidence log อยู่แล้ว ไม่ได้ข้าม window
+- **Live-sync/MCP integration ยังคงถูก gate ด้วย 8-week window เดิม** ไม่เปลี่ยน — ดู `docs/phase7-project-plan.md` §0/Decision 1-2 และ exit criterion #11
+- ดูรายละเอียดเต็มใน `docs/phase7-project-plan.md`
+
 ## Commerce / Affiliate (decided 2026-07-20, Phase 6)
 
 ขอบเขตใหม่: ส่ง video เข้า Shopee, affiliate, ปักตะกร้า (product anchor) บน TikTok + Shopee
