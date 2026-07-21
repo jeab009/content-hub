@@ -165,6 +165,59 @@ describe('CommerceConversionService', () => {
           data: expect.objectContaining({ reversalOfId: 'conversion-1' }),
         });
       });
+
+      it('BUG-QA-6A-01: inherits linkage from the target row, ignoring whatever the client sent — a reversal that omitted/mismatched postId/placementId used to net correctly in the GLOBAL summary but silently vanish from the PER-CONTENT one, since that view filters by placementId/postId', async () => {
+        prisma.commerceConversion.findUnique.mockResolvedValueOnce(
+          buildConversion({
+            id: 'conversion-1',
+            channel: CommerceChannel.shopee,
+            postId: 'post-original',
+            placementId: 'placement-original',
+            productId: 'product-original',
+            affiliateLinkId: 'link-original',
+          }),
+        );
+
+        // Client sends NO linkage fields at all (the exact repro: omitted,
+        // not just wrong) alongside an unrelated productId that must be
+        // discarded rather than trusted.
+        await service.create(
+          dto({
+            reversalOfId: 'conversion-1',
+            channel: CommerceChannel.shopee,
+            commissionAmount: -300,
+            postId: undefined,
+            placementId: undefined,
+            productId: 'product-attacker-supplied',
+            affiliateLinkId: undefined,
+          }),
+          'user-1',
+        );
+
+        expect(prisma.commerceConversion.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({
+            postId: 'post-original',
+            placementId: 'placement-original',
+            productId: 'product-original',
+            affiliateLinkId: 'link-original',
+          }),
+        });
+      });
+
+      it('a non-reversal row still uses the client-supplied linkage (no target to inherit from)', async () => {
+        await service.create(
+          dto({ postId: 'post-1', placementId: 'placement-1', productId: 'product-1' }),
+          'user-1',
+        );
+
+        expect(prisma.commerceConversion.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({
+            postId: 'post-1',
+            placementId: 'placement-1',
+            productId: 'product-1',
+          }),
+        });
+      });
     });
   });
 

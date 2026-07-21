@@ -38,6 +38,33 @@ export class CommerceConversionService {
 
     const reversalOf = await this.loadAndValidateReversalTarget(dto);
 
+    // BUG-QA-6A-01: the per-content summary (commerce-read.service.ts) finds
+    // conversions by `placementId IN (...) OR postId IN (...)` derived from the
+    // content's own placements/posts — it never looks at reversalOfId. A
+    // reversal that omitted or mismatched these fields still netted correctly
+    // in the GLOBAL summary, but silently dropped out of the PER-CONTENT one,
+    // leaving that view showing an inflated total until someone noticed.
+    //
+    // A reversal's linkage is never a new fact the client is choosing — it is
+    // the same transaction the target already recorded, seen from the other
+    // side. So when reversalOfId is set, inherit postId/placementId/
+    // productId/affiliateLinkId from the target row and ignore whatever the
+    // client sent for them, the same "server recomputes, client can't
+    // override" rule this codebase already applies to Post.wasOverride.
+    const linkage = reversalOf
+      ? {
+          postId: reversalOf.postId,
+          placementId: reversalOf.placementId,
+          productId: reversalOf.productId,
+          affiliateLinkId: reversalOf.affiliateLinkId,
+        }
+      : {
+          postId: dto.postId ?? null,
+          placementId: dto.placementId ?? null,
+          productId: dto.productId ?? null,
+          affiliateLinkId: dto.affiliateLinkId ?? null,
+        };
+
     const conversion = await this.prisma.commerceConversion.create({
       data: {
         channel: dto.channel,
@@ -49,10 +76,7 @@ export class CommerceConversionService {
           dto.grossSalesAmount !== undefined ? new Prisma.Decimal(dto.grossSalesAmount) : null,
         commissionAmount: new Prisma.Decimal(dto.commissionAmount),
         currency: COMMERCE_DEFAULT_CURRENCY,
-        postId: dto.postId ?? null,
-        placementId: dto.placementId ?? null,
-        productId: dto.productId ?? null,
-        affiliateLinkId: dto.affiliateLinkId ?? null,
+        ...linkage,
         statementRef: dto.statementRef ?? null,
         reversalOfId: reversalOf?.id ?? null,
         recordedBy: userId,
