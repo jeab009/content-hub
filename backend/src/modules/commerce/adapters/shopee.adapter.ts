@@ -62,10 +62,12 @@ export class ShopeeAdapter implements CommerceAdapter {
     });
     return Promise.reject(
       new CommerceIntegrationUnavailableError(
-        'Shopee Open API requires managed-seller status and an assigned KAM; no partner_id/' +
-          'partner_key is configured for this system. Set COMMERCE_IMPL_SHOPEE=mock and use the ' +
-          'manual-external placement path (POST /api/commerce/placements/manual-external) instead. ' +
-          `Called: ${method}.`,
+        'Live Shopee integration requires credentials that do not exist yet for this system: no ' +
+          'managed-seller status, no assigned KAM, and no partner_id/partner_key. Set ' +
+          'COMMERCE_IMPL_SHOPEE=mock and use the manual-external placement path ' +
+          '(POST /api/commerce/placements/manual-external) instead. See ' +
+          'docs/phase6d-live-integration-spec.md for the bounded implementation path once ' +
+          `credentials are granted. Called: ${method}.`,
       ),
     );
   }

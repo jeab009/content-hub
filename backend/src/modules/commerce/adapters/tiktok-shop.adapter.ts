@@ -51,9 +51,11 @@ export class TikTokShopAdapter implements CommerceAdapter {
     });
     return Promise.reject(
       new CommerceIntegrationUnavailableError(
-        'TikTok Shop Creator Affiliate API access is not granted for this system — no verified ' +
-          'integration exists. Set COMMERCE_IMPL_TIKTOK_SHOP=mock and use the manual-external ' +
-          `placement path instead. Called: ${method}.`,
+        'Live TikTok Shop integration requires credentials that do not exist yet for this system: ' +
+          'no TikTok Shop Creator Affiliate access has been granted. Set ' +
+          'COMMERCE_IMPL_TIKTOK_SHOP=mock and use the manual-external placement / product-anchor ' +
+          'path instead. See docs/phase6d-live-integration-spec.md for the bounded implementation ' +
+          `path once credentials are granted. Called: ${method}.`,
       ),
     );
   }

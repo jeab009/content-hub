@@ -186,6 +186,21 @@ describe('Live commerce adapters — rejecting stubs, audited, zero I/O (Decisio
       }
     },
   );
+
+  it.each(liveCases)(
+    "$name's rejection message names missing credentials and points at the 6D spec doc",
+    async ({ build }) => {
+      const audit = { record: jest.fn() } as unknown as AuditLogService;
+      const adapter = build(audit);
+
+      await expect(adapter.fetchProducts({ credentials: null })).rejects.toThrow(
+        /credentials that do not exist yet/i,
+      );
+      await expect(adapter.fetchProducts({ credentials: null })).rejects.toThrow(
+        /docs\/phase6d-live-integration-spec\.md/,
+      );
+    },
+  );
 });
 
 describe('CommerceAdapterRegistry', () => {
