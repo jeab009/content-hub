@@ -253,6 +253,20 @@ Built across 9 commits (6A.1–6A.9) after an earlier session-limit interruption
 
 No migration was needed for 6A — the commerce tables landed at the 6.0 gate; 6A only added the surface on top of them, which is itself informative confirmation the 6.0 schema was scoped correctly.
 
+## Phase 6A — real QC/QA pass (2026-07-21)
+
+First independent review of the commerce backend (the prior entry was the orchestrator's own informal smoke test, not QA). **QC: APPROVED, zero Critical/Major. QA: SIGNED OFF, zero Critical/High/Medium.**
+
+QA's adversarial pass went further than the informal smoke: 4-way concurrent duplicate-placement race (same bug class as BUG-QA-001 in Phase 2 — exactly one 201, rest 409), all 4 duration boundary values tested (not just the one that was expected to fail), throttle-isolation confirmed by exhausting one endpoint's budget and checking siblings were unaffected, a ฿9,999,999 commission + reversal proving byte-identity under real financial-magnitude adversarial data.
+
+| ID | Severity | Found by | Summary | Status |
+|---|---|---|---|---|
+| BUG-QA-6A-01 | Low | QA | Per-content commerce summary filters conversions by `placementId`/`postId` derived from the content's own rows — never consults `reversalOfId`. A reversal that omitted/mismatched those fields netted correctly in the GLOBAL summary but silently vanished from the PER-CONTENT one, inflating that view's total until noticed. No effect on payout/ranking separation or PII. | **Fixed** `3e370bf` — reversal now inherits linkage from its target row, ignoring client-supplied values (same "server recomputes" rule as `Post.wasOverride`). Verified live: reversed with zero linkage fields sent, row inherited target's productId exactly. 595→597 tests, 14/14 e2e unaffected |
+
+After fix: **597 unit + 14 e2e tests pass**, lint + typecheck clean, backend rebuilt healthy.
+
+**Phase 6A now closed**: 20 commerce endpoints, all separation guarantees independently verified twice (orchestrator's own HTTP smoke, then QA's adversarial pass), zero open bugs.
+
 ## Carry-forward to Phase 2 kickoff (from Bug Fixer close-out, 2026-07-16)
 
 - QC review + QA baseline ของ Phase 2 WIP commits ก่อนเขียนโค้ดใหม่ — migration `20260716054701_phase2_publish_cms_ranking` ถูก apply ใน demo DB แล้ว ต้อง treat schema เป็น already-live
