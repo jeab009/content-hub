@@ -267,6 +267,20 @@ After fix: **597 unit + 14 e2e tests pass**, lint + typecheck clean, backend reb
 
 **Phase 6A now closed**: 20 commerce endpoints, all separation guarantees independently verified twice (orchestrator's own HTTP smoke, then QA's adversarial pass), zero open bugs.
 
+## Phase 6B (commerce frontend) — QC/QA close-out, 2026-07-21
+
+**QC**: APPROVED, zero Critical/Major/Minor across all 9 binding requirements (`docs/phase6b-qc-review.md`) — API contracts verified field-for-field against real backend DTOs, step-up 401/403/409/422/429 handling distinct per status, record-then-anchor genuinely sequential (no `Promise.all`), append-only conversions structurally enforced (no PATCH/DELETE route exists), separation architecture holds (ESLint zones + `next/dynamic`, zero cross-imports), accessibility (text+color pairing everywhere), zero `any` types, zero raw fetch.
+
+**QA**: zero Critical/High (`docs/phase6b-qa-report.md`). Notable: QA had **no browser tools available this session** and disclosed this plainly rather than fabricating "clicked X, saw Y" claims — substituted live `curl`+Postgres adversarial testing against the real running stack (wrong password, duration 9/10/60/61/omitted, statementRef edge cases incl. 64/65 char boundary, retired-product anchor 409 rejection, duplicate product 409, append-only 404 on PATCH/DELETE, CSV header byte-diff) plus explicit source-code verification labeled separately from executed evidence. Re-ran 597 backend + 129 frontend tests fresh, both green. Found a bonus control not in the brief: idempotency-window 409 on identical resubmit.
+
+**Orchestrator's own live browser verification** closed the gap QA's tooling couldn't reach: drove `/dashboard` (768px, 375px), `/commerce/products`, `/commerce/placements`, `/commerce/conversions` (1280px) — all render correctly, currency uncut, console clean. Then opened the **record-placement modal live**, filled + submitted it, hit the endpoint's real rate limit (already spent by QA's own curl testing) — confirmed the 429 renders as a distinct message with all fields (video ID, duration) preserved and password untouched, matching the code path exactly.
+
+Two Low findings, both **product decisions, not bugs**, put to the user directly (not auto-fixed):
+- QA6B-OBS-1: retired product can silently gain new affiliate links (anchors block retired products, links don't) — **user decision: leave as-is**.
+- QA6B-OBS-2: TikTok-only anchor restriction is frontend-only, no backend backstop — **user decision: leave as-is** (matches architecture doc's stated deliberate frontend-only UX choice).
+
+**Phase 6B now closed**: 4 new routes + dashboard section + anchor picker, 129 frontend tests, zero code changes needed after QC/QA (both "leave as-is" decisions require no fix).
+
 ## Carry-forward to Phase 2 kickoff (from Bug Fixer close-out, 2026-07-16)
 
 - QC review + QA baseline ของ Phase 2 WIP commits ก่อนเขียนโค้ดใหม่ — migration `20260716054701_phase2_publish_cms_ranking` ถูก apply ใน demo DB แล้ว ต้อง treat schema เป็น already-live
