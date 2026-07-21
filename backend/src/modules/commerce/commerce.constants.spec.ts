@@ -77,10 +77,12 @@ describe('A4 — note length cap', () => {
 });
 
 describe('A5 — erasure surface', () => {
-  it('names exactly the two PII-capable columns', () => {
+  it('names exactly the four PII-capable columns', () => {
     expect(COMMERCE_ERASABLE_FREE_TEXT_COLUMNS).toEqual([
       { table: 'commerce_conversions', column: 'statement_ref' },
       { table: 'commerce_placements', column: 'note' },
+      { table: 'affiliate_links', column: 'tracking_code' },
+      { table: 'affiliate_links', column: 'sub_id' },
     ]);
   });
 });

@@ -34,12 +34,20 @@ export const COMMERCE_DEFAULT_CURRENCY = 'THB';
  * comment regime (hard delete at 12 months).
  *
  * The PDPA erasure path is AUDIT'S "anonymize-in-place, keep the row" pattern
- * (mirroring AuditRetentionService.anonymizeExpiredActors) applied to the ONLY
- * two columns capable of holding personal data. An admin erasure request is
- * satisfied by NULL-ing these columns on the named rows — the financial row
- * survives, the free text does not. The clearing sweep job itself is 6A; the
- * POLICY and the column list are frozen here so "we have no way to comply with
- * an erasure request" can never be the answer at the PDPA gate.
+ * (mirroring AuditRetentionService.anonymizeExpiredActors) applied to every
+ * unconstrained free-text column capable of holding personal data. An admin
+ * erasure request is satisfied by NULL-ing these columns on the named rows —
+ * the financial row survives, the free text does not. The clearing sweep job
+ * itself is 6A; the POLICY and the column list are frozen here so "we have no
+ * way to comply with an erasure request" can never be the answer at the PDPA
+ * gate.
+ *
+ * `AffiliateLink.trackingCode`/`subId` (6A.3) are added here per the 6C.4
+ * re-verification: they are the same unconstrained-string risk class as
+ * `note`/`statement_ref` (255 chars, no format regex) and were missed when
+ * this list was first frozen because affiliate links were built after this
+ * file — a reminder that the list needs revisiting on every new commerce
+ * free-text column, not just at the 6.0 gate.
  */
 export const COMMERCE_ERASABLE_FREE_TEXT_COLUMNS: readonly {
   table: string;
@@ -47,6 +55,8 @@ export const COMMERCE_ERASABLE_FREE_TEXT_COLUMNS: readonly {
 }[] = [
   { table: 'commerce_conversions', column: 'statement_ref' },
   { table: 'commerce_placements', column: 'note' },
+  { table: 'affiliate_links', column: 'tracking_code' },
+  { table: 'affiliate_links', column: 'sub_id' },
 ];
 
 /**
