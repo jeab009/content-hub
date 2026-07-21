@@ -281,6 +281,16 @@ Two Low findings, both **product decisions, not bugs**, put to the user directly
 
 **Phase 6B now closed**: 4 new routes + dashboard section + anchor picker, 129 frontend tests, zero code changes needed after QC/QA (both "leave as-is" decisions require no fix).
 
+## Phase 6C.4 + 6D — final gate + spec tail, 2026-07-21
+
+**6C.4** (`docs/phase6c-system-analyst-signoff.md`): System Analyst re-verified exit criterion #8 against the **shipped** schema/code (not the plan) — read every commerce model column-by-column, re-ran the separation suite fresh (4 suites, 25 tests, green), confirmed `statementRef` genuinely excluded from audit meta. **SIGNED OFF**. One new finding not caught by QC/QA (different checklist angle): `AffiliateLink.trackingCode`/`subId` (added in 6A.3, after the PDPA erasure allow-list was first frozen at the 6.0 gate) are unconstrained free-text fields of the same risk class as `note`/`statementRef` but were missing from `COMMERCE_ERASABLE_FREE_TEXT_COLUMNS`. User chose to fix now — added `37516c7`, 599/599 tests still green.
+
+**6D** (spec + rejecting stubs, non-blocking tail, per Decision 5 — no live HTTP client without credentials, same reasoning that correctly kept Phase 5C unbuilt): wrote `docs/phase6d-live-integration-spec.md` (Shopee MediaSpace upload sequence, TikTok Shop Affiliate Creator API, partner_id/partner_key HMAC signing, credential storage reusing the existing `TokenEncryptionService` pattern). The rejecting stubs (`ShopeeAdapter`/`TikTokShopAdapter`) already existed from 6A.1 — updated their error messages to name the missing credentials explicitly and point at the new spec doc, audited via `commerce_adapter_unavailable`. Verified directly: read the stub's `reject()` method myself, re-ran the full suite personally (599/599, not just trusting the developer's claim). Also fixed a small doc gap the developer flagged but correctly left out of scope: `COMMERCE_IMPL_SHOPEE`/`COMMERCE_IMPL_TIKTOK_SHOP` were validated but undocumented in `.env.example` — added.
+
+Docker rebuilt, backend boots clean ("Nest application successfully started"). `/api/health` 404 is the pre-existing DEVOPS-3 gap (no health endpoint), not a regression.
+
+**Phase 6 (6.0 → 6D) now fully closed.** Commerce/affiliate feature complete: schema+separation gate, 20 backend endpoints, 4 frontend routes + dashboard section, QC/QA passed twice (6A and 6B separately, exceeding the plan's single-gate design), System Analyst re-verified PDPA compliance against shipped code, live-integration path specified and safely stubbed. Zero open Critical/High findings anywhere in the phase.
+
 ## Carry-forward to Phase 2 kickoff (from Bug Fixer close-out, 2026-07-16)
 
 - QC review + QA baseline ของ Phase 2 WIP commits ก่อนเขียนโค้ดใหม่ — migration `20260716054701_phase2_publish_cms_ranking` ถูก apply ใน demo DB แล้ว ต้อง treat schema เป็น already-live
