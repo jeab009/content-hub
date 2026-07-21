@@ -68,6 +68,11 @@ Confirmed business rules only (not tech/design detail — see `makedown.md` for 
 - **Live-sync/MCP integration ยังคงถูก gate ด้วย 8-week window เดิม** ไม่เปลี่ยน — ดู `docs/phase7-project-plan.md` §0/Decision 1-2 และ exit criterion #11
 - ดูรายละเอียดเต็มใน `docs/phase7-project-plan.md`
 
+### Phase 7 OQ-4 answer (2026-07-21): currency = THB only
+
+- Admin confirm: **THB only** สำหรับ v1 — เหมือน Commerce เป๊ะ. `ad_campaigns.currency`/`ad_performance_entries.currency` มี `CHECK (currency ~ '^[A-Z]{3}$')` + service guard `PAID_SUPPORTED_CURRENCIES = ['THB']` reject อย่างอื่นตอนเขียน — ผ่อนคลายทีหลังทำได้ฟรี (service-level change) ไม่ต้อง migration ใหม่
+- ดู `docs/phase7-system-analyst-signoff.md` SA-P6
+
 ## Commerce / Affiliate (decided 2026-07-20, Phase 6)
 
 ขอบเขตใหม่: ส่ง video เข้า Shopee, affiliate, ปักตะกร้า (product anchor) บน TikTok + Shopee
