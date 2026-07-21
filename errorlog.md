@@ -237,6 +237,22 @@ First independent review of the gate (the earlier docs were developer self-asses
 
 After fixes: **469 unit + 14 e2e tests pass**, lint + typecheck clean.
 
+## Phase 6A — commerce backend (2026-07-20..21)
+
+Built across 9 commits (6A.1–6A.9) after an earlier session-limit interruption during 6A.6 (see the prior entry above — fixed by resuming, not trusted). This session independently re-verified the FULL 6A delivery from zero, not from commit messages:
+
+- **Unit tests: 595 passed** (56 suites, up from 487 after 6.0). **E2E separation suite: 14/14 still passing** against the disposable `content_hub_e2e` database after the full commerce endpoint surface landed — the byte-identity proof and boundary scan hold with real endpoints wired in, not just schema.
+- Backend container rebuilt, reached healthy, zero boot errors, zero HTTP 500s across the entire smoke session.
+- **QA-1 closed and independently re-proven**: `assertStatementRefShape()` is a standalone function called from `CommerceConversionService` (not just declared) — confirmed by `grep` showing the call site, then reproduced QA's exact repro live: `statementRef:"John Smith"` → 400 with the message `"statementRef accepts letters, digits and . _ - / only (no spaces) — never buyer or order details."` A valid ref (`stmt-2026-07-A`) succeeds.
+- **6A.5 manual-external placement — all 5 guards verified live via curl**: no CSRF → 403; wrong step-up password → 401 (action-neutral message); content not `ready` (copyright not cleared) → 409; duration null → 422 ("null was provided or could be parsed... enter it by hand"); duration 9s (out of 10–60 range) → 422; duplicate active placement same content+channel → 409; valid request (30s, correct password) → 201.
+- **CommerceModule's own ThrottlerModule confirmed live** — hit the shared 5/15min budget mid-test (429), proving 6A's password-carrying endpoint is NOT unthrottled (this was 6.0 MAJOR-2/requirement 7's whole point).
+- **Separation proof re-confirmed at the HTTP layer, not just the e2e fixture**: `revenue.csv` grepped clean of `commission|shopee|tiktok_shop|affiliate`; `commerce.csv` is a genuinely separate file/route with its own columns; `/api/dashboard/overview` revenue total (0) was completely unaffected by creating a live ฿800 commission conversion moments earlier; `/api/commerce/summary` groups by currency per SA-9 rather than converting.
+- **Append-only proven live**: PATCH and DELETE on `/api/commerce/conversions/:id` both 404 (routes genuinely absent, not just guarded).
+- Route audit: all 20 expected commerce/anchor/CSV routes registered exactly as designed (`/api/commerce/products`, `/links`, `/placements/manual-external`, `/conversions` [+overlap-check], `/summary` [+:contentId], `/posts/:id/product-anchors`, `/reports/commerce.csv`) — no accidental extra surface.
+- Smoke-test data cleaned up (2 contents archived, 1 product retired, throttle keys cleared, session logged out).
+
+No migration was needed for 6A — the commerce tables landed at the 6.0 gate; 6A only added the surface on top of them, which is itself informative confirmation the 6.0 schema was scoped correctly.
+
 ## Carry-forward to Phase 2 kickoff (from Bug Fixer close-out, 2026-07-16)
 
 - QC review + QA baseline ของ Phase 2 WIP commits ก่อนเขียนโค้ดใหม่ — migration `20260716054701_phase2_publish_cms_ranking` ถูก apply ใน demo DB แล้ว ต้อง treat schema เป็น already-live

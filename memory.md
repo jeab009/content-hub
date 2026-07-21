@@ -60,6 +60,7 @@
 - Phase 1.5 ค้าง: Meta App Review submission (admin ต้องกรอก docs/meta-app-review-status.md), ยืนยันตัวเลข pillar ratio + cadence target จริง (ตอนนี้ provisional 40/30/30, FB 7/wk, YT 3/wk)
 - Known bugs BUG-001~004 (Nest DI, dotenv, circular import, queue name) — ทั้งหมด fixed แล้ว ดู [errorlog.md](errorlog.md)
 
+- **Phase 6A commerce backend เสร็จ + verify อิสระแล้ว (2026-07-20..21)**: 9 commit (6A.1–6A.9) บน branch `phase6.0-schema-separation-gate`. Endpoint ครบ 20 route (catalog/links/anchors/manual-external/conversions/summary/CSV). 595 unit tests (56 suites) + 14/14 e2e separation หลังมี endpoint จริง. **QA-1 ปิดแล้วจริง** — `assertStatementRefShape()` เรียกจาก service จริง verify ด้วย curl ตรง (`'John Smith'` → 400). 6A.5 ทั้ง 5 guard (CSRF/step-up/copyright/duration/duplicate) verify ผ่าน curl ครบ. Separation ยืนยันซ้ำที่ HTTP layer: revenue.csv สะอาด, dashboard ไม่ขยับตอนสร้าง commission จริง, throttler แยกของตัวเอง (โดน 429 จริงระหว่างเทส). ยังไม่ผ่าน QC/QA อิสระ — งานถัดไปคือรีวิวจริง
 ## Reference files
 
 - [global_config.md](global_config.md) — design tokens ที่ใช้ร่วมกัน (font, สี, ขนาด, spacing, chart constants, component patterns) ดึงจากโค้ดจริง
