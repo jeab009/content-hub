@@ -82,12 +82,38 @@ const COMMERCE_TOKENS = [
 ];
 
 /**
+ * Phase 7 — both the Prisma client accessor spelling AND the physical table
+ * name for the paid/ads visibility stream (System Analyst condition P-B1).
+ * Scanned alongside COMMERCE_TOKENS wherever payout/ranking must not
+ * reference either commerce or paid, restating the same discipline for the
+ * third stream rather than a parallel, easy-to-forget scan.
+ */
+const PAID_TOKENS = [
+  'adCampaign',
+  'adPerformanceEntry',
+  'ad_campaigns',
+  'ad_performance_entries',
+  'AdChannel',
+  'AdCampaignStatus',
+  'AdSource',
+];
+
+/**
  * The reverse check. Without it the separation is one-directional: a future
  * "blend in payout revenue for context" inside commerce would leave the
  * byte-identity proof green (payout output really would be unchanged) while
  * the two streams had quietly been joined.
  */
 const COMMERCE_SIDE_DIRS = ['src/modules/commerce'];
+
+/**
+ * Phase 7 — the paid/ads side of the three-way boundary. Currently contains
+ * only `paid.constants.ts` (7.0.4); the rest of `modules/paid/` is 7A. The
+ * scan is wired now so it is already enforcing once that code lands, per
+ * System Analyst condition P-B4 (PaidModule's import graph must stay
+ * `{ContentModule, common/*}` only).
+ */
+const PAID_SIDE_DIRS = ['src/modules/paid'];
 
 const PAYOUT_TOKENS = [
   'prisma.metric',
@@ -139,5 +165,33 @@ describe('Phase 6 separation — static boundary scan', () => {
 
   it('no commerce source file references the metric or ranking stream', () => {
     expect(scan(COMMERCE_SIDE_DIRS, PAYOUT_TOKENS)).toEqual([]);
+  });
+});
+
+/**
+ * Phase 7 — the same static boundary scan, extended to a third stream
+ * (System Analyst conditions P-B1, P-B4). Deliberately EXTENDS the existing
+ * `PAYOUT_AND_RANKING_DIRS`/`COMMERCE_SIDE_DIRS` constants above rather than
+ * hand-deriving a shorter directory list from the architecture design's own
+ * prose, which under-scopes it (the design's §2.3 text omits `comments` and
+ * `connected-accounts` — both are already present in the real constant and
+ * therefore already covered here).
+ */
+describe('Phase 7 separation — static boundary scan (paid/ads, third stream)', () => {
+  it('scans a non-empty set of paid-side files (guards against a silently empty scan)', () => {
+    const paidFiles = PAID_SIDE_DIRS.flatMap((dir) => listTsFiles(dir));
+    expect(paidFiles.length).toBeGreaterThan(0);
+  });
+
+  it('no payout or ranking source file references any paid table or symbol', () => {
+    expect(scan(PAYOUT_AND_RANKING_DIRS, PAID_TOKENS)).toEqual([]);
+  });
+
+  it('no commerce source file references any paid table or symbol', () => {
+    expect(scan(COMMERCE_SIDE_DIRS, PAID_TOKENS)).toEqual([]);
+  });
+
+  it('no paid source file references the metric/ranking stream or any commerce table or symbol', () => {
+    expect(scan(PAID_SIDE_DIRS, [...PAYOUT_TOKENS, ...COMMERCE_TOKENS])).toEqual([]);
   });
 });

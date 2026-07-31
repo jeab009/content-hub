@@ -149,6 +149,13 @@ enum CopyrightClearance {
 // cadence card, and a platform-map.util counterpart.
 // The freeze test at src/testing/separation/enum-freeze.spec.ts fails if this
 // enum changes.
+//
+// ⚠ Phase 7 (paid/ads visibility): the identical argument applies to `meta`.
+// Do NOT add `meta` / `meta_ads` here — it would enrol paid campaign data into
+// v2 scoring exactly as `shopee` would have. Paid/ads uses its own parallel
+// `AdChannel` enum instead (phase7-project-plan.md Decision 3/4,
+// phase7-system-analyst-signoff.md §2 Layer 1/SA-P-B). Frozen by the same
+// enum-freeze test, extended with an `AdChannel` assertion.
 enum AssetPlatform {
   facebook
   youtube
@@ -863,4 +870,202 @@ model CommerceConversion {
   @@index([placementId])
   @@index([createdAt])
   @@map("commerce_conversions")
+}
+
+// =========================================================================
+// Phase 7 additions — Paid/Ads Visibility (Schema & Separation Gate, 7.0)
+// =========================================================================
+//
+// Additive-only per the header rule. See docs/phase7-architecture-design.md
+// §1 (AS CORRECTED by docs/phase7-system-analyst-signoff.md conditions
+// P-A1–P-A4, P-B1–P-B4, SA-P1–SA-P7 — the design draft's own quoted
+// `sourceRef` regex was defective; do not copy it from that document).
+//
+// THE LOAD-BEARING STRUCTURAL CHOICE, restated a third time (design §2.1):
+//
+//   NEITHER `AdCampaign` NOR `AdPerformanceEntry` declares a Prisma relation
+//   to `Content` or `User`. `content_id` / `created_by` / `recorded_by` are
+//   plain `String @db.Uuid`; their FOREIGN KEYs are hand-written `ALTER TABLE`
+//   DDL in migration 20260721010000_phase7_paid_visibility — the same
+//   technique Commerce already uses. Postgres enforces referential integrity;
+//   `Content` and `User` gain no new field, so there is no `include` that
+//   reaches `ad_campaigns` from `DashboardModule`, `MetricsModule`,
+//   `RankingModule`, `ReportsModule` or `CommerceModule`. The traversal is
+//   unspellable, not merely forbidden — do not add a relation field here.
+//
+//   The relation from `AdPerformanceEntry` to `AdCampaign` IS a normal Prisma
+//   relation — it is WITHIN the paid namespace, not a boundary crossing,
+//   mirroring `AffiliateLink.product CommerceProduct @relation(...)`.
+//
+// This is a THIRD, independent stream from payout and commerce — no
+// discriminator on `Metric`, no FK to `Metric`/`CommerceConversion`, and
+// nothing under modules/ranking, modules/metrics, modules/dashboard or
+// modules/commerce may read it. Enforced by three-way ESLint zones, a static
+// boundary scan and a byte-identity e2e proof — see
+// docs/phase7-commerce-paid-pdpa-separation-policy.md.
+//
+// PDPA (Decision 5, hard rule): there is NO audience-targeting, custom-
+// audience/lookalike, or individual click/impression-level column, and never
+// will be without a fresh decision. `reach`/`impressions`/`clicks`/
+// `resultCount` are AGGREGATE counters only. The two free-text columns
+// (`objective`, `sourceRef`) are the entire residual PDPA surface — see
+// PAID_SOURCE_REF_PATTERN and PAID_ERASABLE_FREE_TEXT_COLUMNS in
+// backend/src/modules/paid/paid.constants.ts.
+
+// Ad channel. DELIBERATELY NOT a value on `Platform` or `AssetPlatform` — see
+// the warning block on `AssetPlatform`. One value this phase (Meta-only,
+// phase7-project-plan.md Decision 3); a second channel is an honest additive
+// migration later, not a speculative abstraction built now.
+enum AdChannel {
+  meta
+}
+
+// The admin's manual read of the REAL Meta campaign's lifecycle stage —
+// nothing here is live-synced (Decision 2/P-C, no MCP/API coupling this
+// phase). Deliberately a SEPARATE axis from Content Hub's own soft-retire
+// (`AdCampaign.isActive`/`retiredAt`, ADR-7.5): a campaign can be `ended` in
+// Meta Ads Manager for months before the admin retires the Content Hub
+// record, and conversely a record can be retired from the picker while still
+// showing `active` for historical accuracy.
+enum AdCampaignStatus {
+  active
+  paused
+  ended
+}
+
+// Provenance, mirroring CommerceSource(manual|api). Every paid table carries
+// it so that if the 7D live-sync path (standard Meta Marketing/Insights API,
+// NOT the Ads MCP) is ever built, API-sourced rows are distinguishable from
+// hand-entered ones without a migration.
+//
+// Deliberately NOT a reuse of `CommerceSource`: reusing it would put a
+// commerce-namespaced type on paid rows, creating exactly the conceptual
+// bridge the separation exists to prevent (the identical argument
+// `CommerceSource` itself made relative to `MetricSource` in Phase 6).
+enum AdSource {
+  manual
+  api
+}
+
+/// One row per Meta ad campaign the admin logs. No FK to `Post`: a campaign
+/// commonly promotes a pillar or several pieces of content rather than one
+/// platform-native publish event (ADR-7.4) — the nullable `contentId` links
+/// to `Content` instead, and only when a single piece of content is the
+/// primary attribution target; an unlinked campaign is a normal, expected
+/// state, exactly like `CommerceConversion`'s all-nullable attribution
+/// columns.
+model AdCampaign {
+  id                   String           @id @default(uuid()) @db.Uuid
+  channel              AdChannel
+  externalCampaignName String           @map("external_campaign_name")
+  externalCampaignId   String?          @map("external_campaign_id")
+  /// FREE TEXT, capped at 100 chars (System Analyst SA-P4: excluded from
+  /// `audit_logs.meta` for all 5 paid actions, consistent with Commerce's
+  /// blanket free-text exclusion, not just the higher-residual `sourceRef`).
+  /// Not format-regexed — a short categorical label ("Traffic", "Conversions"),
+  /// not a business-reconciliation reference an admin might pad with extra
+  /// identifying detail. See PAID_ERASABLE_FREE_TEXT_COLUMNS.
+  objective            String
+  /// SQL FK → contents(id) ON DELETE SET NULL. NO Prisma relation (see header).
+  contentId            String?          @map("content_id") @db.Uuid
+  startDate            DateTime         @map("start_date") @db.Date
+  /// NULL means "still running" — a real, common state; there is no honest
+  /// non-null placeholder for "no end date yet".
+  endDate              DateTime?        @map("end_date") @db.Date
+  /// INDICATIVE ONLY (System Analyst SA-P5). Never summed with, or reconciled
+  /// against, AdPerformanceEntry.spend anywhere in the codebase — actual cost
+  /// is always the entered spend figures. Mirrors CommerceProduct.commissionRatePct.
+  plannedBudget        Decimal?         @map("planned_budget") @db.Decimal(12, 2)
+  /// THB only, v1 (admin-confirmed 2026-07-21, bussiness_rule.md "Phase 7
+  /// OQ-4 answer"). CHECK enforces ISO-4217 SHAPE only; PAID_SUPPORTED_CURRENCIES
+  /// is the v1 service-level restriction (SA-P6) — relaxing that later is free,
+  /// adding this column/CHECK later would not have been.
+  currency             String           @default("THB") @db.Char(3)
+  /// The admin's manual read of Meta's real lifecycle state (see AdCampaignStatus).
+  status               AdCampaignStatus @default(active)
+  /// Content Hub's OWN soft-retire — never hard-delete. Independent axis from
+  /// `status` above. Mirrors CommerceProduct.isActive/retiredAt.
+  isActive             Boolean          @default(true) @map("is_active")
+  retiredAt            DateTime?        @map("retired_at")
+  source               AdSource         @default(manual)
+  /// SQL FK → users(id) ON DELETE RESTRICT. NO Prisma relation (see header).
+  createdBy            String           @map("created_by") @db.Uuid
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
+
+  performanceEntries AdPerformanceEntry[]
+
+  @@unique([channel, externalCampaignId])
+  @@index([channel, isActive, externalCampaignName])
+  @@index([contentId])
+  @@map("ad_campaigns")
+}
+
+/// One row per spend/results figure the admin logs against a campaign,
+/// APPEND-ONLY: no `updatedAt`, no PATCH/DELETE route (exit criterion #3). A
+/// data-entry correction is a NEW row naming the row it corrects via
+/// `correctsEntryId` — deliberately NOT a reversal/negative-amount mechanic
+/// (ADR-7.2): ad spend has no real-world refund event the way a commission
+/// chargeback does, so every numeric field here is CHECK'd non-negative,
+/// with no signed-amount case to escape in the CSV export.
+///
+/// PDPA: there is NO buyer_*, recipient, audience, custom-audience or
+/// individual click/impression-identifier column. `reach`/`impressions`/
+/// `clicks`/`resultCount` are AGGREGATE counters and cannot hold an
+/// identifier. Paid introduces no new data subject: the only personal data is
+/// `recordedBy`, the single admin.
+model AdPerformanceEntry {
+  id              String   @id @default(uuid()) @db.Uuid
+  /// Normal Prisma relation — WITHIN the paid namespace, not a boundary
+  /// crossing. Mirrors AffiliateLink.product CommerceProduct @relation(...).
+  campaignId      String   @map("campaign_id") @db.Uuid
+  /// CHECK (spend >= 0) — NEVER negative; see the model docblock.
+  spend           Decimal  @db.Decimal(12, 2)
+  /// AGGREGATE ONLY. CHECK (reach IS NULL OR reach >= 0).
+  reach           Int?
+  /// AGGREGATE ONLY. CHECK (impressions IS NULL OR impressions >= 0).
+  impressions     Int?
+  /// AGGREGATE ONLY. CHECK (clicks IS NULL OR clicks >= 0).
+  clicks          Int?
+  /// FREE-TEXT label ("Purchases", "Leads", "Link clicks"), paired with
+  /// resultCount; both nullable together (a just-started campaign with no
+  /// result yet is a legitimate state).
+  resultType      String?  @map("result_type")
+  /// CHECK (result_count IS NULL OR result_count >= 0).
+  resultCount     Int?     @map("result_count")
+  /// THB only, v1 — see AdCampaign.currency. Independent of the campaign's own
+  /// currency column (mirrors Commerce's SA-9 precedent: a performance entry
+  /// is the actual transactional record and must be self-consistent on its own
+  /// terms, never reconciled against the campaign's planned-budget currency).
+  currency        String   @default("THB") @db.Char(3)
+  /// DATE, not TIMESTAMP: Ads Manager summary screens are day-grained, and a
+  /// timestamp invites a timezone bug in overlap detection. Mirrors
+  /// CommerceConversion.periodStart/periodEnd exactly.
+  periodStart     DateTime @map("period_start") @db.Date
+  periodEnd       DateTime @map("period_end") @db.Date
+  /// ⚠ FREE TEXT — the higher-residual of the two PDPA free-text columns.
+  /// Max 64 chars AND format-constrained to PAID_SOURCE_REF_PATTERN (no
+  /// spaces, so a pasted Latin-script name fails) in the SERVICE (7A), not
+  /// only the DTO — mirrors COMMERCE_STATEMENT_REF_PATTERN exactly (System
+  /// Analyst P-A1/SA-P1: the design draft's own quoted regex contained a
+  /// space and would have let a pasted name through; do not use it). Never
+  /// audited, never exported. See PAID_ERASABLE_FREE_TEXT_COLUMNS.
+  sourceRef       String?  @map("source_ref")
+  /// Self-FK, SQL-level ONLY, NO Prisma relation (mirrors
+  /// CommerceConversion.reversalOfId's treatment). CHECK (corrects_entry_id
+  /// <> id) — a row cannot correct itself (System Analyst P-A3). The service
+  /// additionally validates the corrected entry belongs to the SAME
+  /// campaignId (7A) — a DB-level cross-campaign check would need a
+  /// composite FK this schema does not carry.
+  correctsEntryId String?  @map("corrects_entry_id") @db.Uuid
+  source          AdSource @default(manual)
+  /// SQL FK → users(id) ON DELETE RESTRICT. NO Prisma relation (see header).
+  recordedBy      String   @map("recorded_by") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  campaign AdCampaign @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+
+  @@index([campaignId, periodStart, periodEnd])
+  @@index([createdAt])
+  @@map("ad_performance_entries")
 }

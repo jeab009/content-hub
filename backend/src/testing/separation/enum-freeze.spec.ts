@@ -28,7 +28,7 @@
  * them fail.
  */
 
-import { AssetPlatform, CommerceChannel, Platform } from '@prisma/client';
+import { AdChannel, AssetPlatform, CommerceChannel, Platform } from '@prisma/client';
 
 describe('Phase 6 separation — platform enum freeze', () => {
   it('Platform is frozen at the Phase 1 set', () => {
@@ -48,6 +48,36 @@ describe('Phase 6 separation — platform enum freeze', () => {
     ] as string[];
     for (const channel of Object.values(CommerceChannel)) {
       expect(platformValues).not.toContain(channel);
+    }
+  });
+});
+
+/**
+ * Phase 7 — exit criterion NFR-7.4: `AdChannel` is frozen at `['meta']`.
+ *
+ * Same hazard as `AssetPlatform` above, restated for the third stream: adding
+ * a value to `Platform`/`AssetPlatform` instead of to `AdChannel` would have
+ * enrolled paid campaign data into v2 ranking scoring with no code change and
+ * no other failing test (see the warning block on `AssetPlatform` in
+ * schema.prisma). `AdChannel` is the parallel, isolated enum Phase 7 uses
+ * instead (docs/phase7-project-plan.md Decision 3/4,
+ * docs/phase7-system-analyst-signoff.md §2 Layer 1/SA-P-B) — one value this
+ * phase (Meta-only); a second channel is an honest additive migration later,
+ * not a speculative abstraction built now.
+ */
+describe('Phase 7 separation — paid channel enum freeze', () => {
+  it('AdChannel is frozen at the Meta-only set', () => {
+    expect(Object.values(AdChannel)).toEqual(['meta']);
+  });
+
+  it('paid channels live on their own enum, never on a platform or commerce channel enum', () => {
+    const nonPaidValues = [
+      ...Object.values(Platform),
+      ...Object.values(AssetPlatform),
+      ...Object.values(CommerceChannel),
+    ] as string[];
+    for (const channel of Object.values(AdChannel)) {
+      expect(nonPaidValues).not.toContain(channel);
     }
   });
 });

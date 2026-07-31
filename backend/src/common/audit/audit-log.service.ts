@@ -98,7 +98,27 @@ export type AuditAction =
   // audit trail. `actor` is `'system:commerce-adapter'`, mirroring the
   // existing `'system:token-refresh-job'` convention for a failure with no
   // request-scoped user.
-  | 'commerce_adapter_unavailable';
+  | 'commerce_adapter_unavailable'
+  // Phase 7 — paid/ads visibility (docs/phase7-architecture-design.md,
+  // docs/phase7-system-analyst-signoff.md SA-P4). Every mutating paid path
+  // has exactly one action; the export path reuses none of them.
+  //
+  // AUDIT META EXCLUSION LIST (System Analyst SA-P4, decided at the 7.0 gate,
+  // restating commerce's SA-4 shape rather than narrowing it). These paid
+  // fields must NEVER be placed in `meta`, on any of the actions below:
+  //   - ad_campaigns.objective              (free text)
+  //   - ad_campaigns.external_campaign_name (free text identifier)
+  //   - ad_campaigns.external_campaign_id   (free text identifier)
+  //   - ad_performance_entries.source_ref   (free text, highest residual PII)
+  // The design draft proposed excluding only `source_ref`; the System
+  // Analyst ruled for consistency with commerce's blanket exclusion instead
+  // (see backend/src/modules/paid/paid.constants.ts and
+  // docs/phase7-commerce-paid-pdpa-separation-policy.md §5).
+  | 'ad_campaign_created'
+  | 'ad_campaign_updated'
+  | 'ad_campaign_retired'
+  | 'ad_performance_entry_added'
+  | 'paid_report_exported';
 
 export type AuditResult = 'success' | 'failure';
 

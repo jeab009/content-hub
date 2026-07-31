@@ -21,6 +21,7 @@
 
 import { Prisma } from '@prisma/client';
 import { COMMERCE_TABLE_COLUMNS } from '../../modules/commerce/commerce.constants';
+import { PAID_TABLE_COLUMNS } from '../../modules/paid/paid.constants';
 
 /** The five commerce models, by Prisma model name → physical table name. */
 const COMMERCE_MODELS: Record<string, string> = {
@@ -29,6 +30,12 @@ const COMMERCE_MODELS: Record<string, string> = {
   ProductAnchor: 'product_anchors',
   CommercePlacement: 'commerce_placements',
   CommerceConversion: 'commerce_conversions',
+};
+
+/** The two Phase 7 paid models, by Prisma model name → physical table name. */
+const PAID_MODELS: Record<string, string> = {
+  AdCampaign: 'ad_campaigns',
+  AdPerformanceEntry: 'ad_performance_entries',
 };
 
 /**
@@ -145,6 +152,126 @@ describe('Phase 6 separation — commerce schema freeze', () => {
         );
 
       expect(offenders).toEqual([]);
+    });
+  });
+});
+
+/**
+ * Phase 7 — the PDPA column allow-list (NFR-7.5) and the Layer 1 "no Prisma
+ * relation into the payout OR commerce side" guarantee, for the third
+ * (paid/ads) stream. Mirrors the Phase 6 describe block above exactly, per
+ * docs/phase7-system-analyst-signoff.md §2 Layer 1.
+ *
+ * ONE STRUCTURAL DIFFERENCE FROM COMMERCE: `AdPerformanceEntry.campaign` IS a
+ * declared Prisma relation to `AdCampaign` — that is WITHIN the paid
+ * namespace, not a boundary crossing (mirrors `AffiliateLink.product
+ * CommerceProduct @relation(...)`), so it is deliberately excluded from the
+ * "no relation at all" cross-namespace checks below rather than asserted
+ * against.
+ */
+describe('Phase 7 separation — paid schema freeze', () => {
+  describe('PDPA column allow-list (NFR-7.5)', () => {
+    /**
+     * An allow-list, not a deny-list of `%audience%` / `%pixel%` patterns:
+     * a deny-list only catches the names somebody thought to ban, while this
+     * also catches `segment_id`, `custom_audience_ref`, `lookalike_ref` and
+     * everything else nobody anticipated. Any NEW column fails until someone
+     * edits PAID_TABLE_COLUMNS — and that diff IS the review moment the
+     * no-audience-data rule needs.
+     */
+    it.each(Object.entries(PAID_MODELS))(
+      '%s columns deep-equal the frozen allow-list',
+      (modelName, tableName) => {
+        expect(columnsOf(modelName)).toEqual(PAID_TABLE_COLUMNS[tableName]);
+      },
+    );
+
+    it('the allow-list covers exactly the two paid tables', () => {
+      expect(Object.keys(PAID_TABLE_COLUMNS).sort()).toEqual(Object.values(PAID_MODELS).sort());
+    });
+
+    it('no paid column name suggests audience, custom-audience or per-click/impression identifier data', () => {
+      // A second, weaker net under the allow-list — same reasoning as
+      // commerce's equivalent test above. Scanned against the LIVE columns,
+      // not against PAID_TABLE_COLUMNS, so it cannot become a tautology that
+      // only fires after the banned column is already in the allow-list.
+      const banned =
+        /audience|segment|pixel|lookalike|custom_audience|recipient|click_id|impression_id/i;
+      const offenders = Object.entries(PAID_MODELS).flatMap(([modelName, tableName]) =>
+        columnsOf(modelName)
+          .filter((column) => banned.test(column))
+          .map((column) => `${tableName}.${column}`),
+      );
+
+      expect(offenders).toEqual([]);
+    });
+  });
+
+  describe('Layer 1 — the client type graph has no edge into paid, or between paid and commerce', () => {
+    it.each(Object.keys(PAID_MODELS))(
+      '%s declares no Prisma relation to Post, Content, ContentAsset or User',
+      (modelName) => {
+        const relations = model(modelName)
+          .fields.filter((field) => field.kind === 'object')
+          .map((field) => `${field.name}: ${field.type}`);
+
+        const breaches = relations.filter((relation) =>
+          FORBIDDEN_RELATION_TARGETS.some((target) => relation.endsWith(`: ${target}`)),
+        );
+
+        expect(breaches).toEqual([]);
+      },
+    );
+
+    it.each(FORBIDDEN_RELATION_TARGETS)(
+      '%s gains no back-relation from any paid model',
+      (targetName) => {
+        // The consequence, asserted from the other side. If this fails,
+        // `prisma.content.findMany({ include: { adCampaigns: true } })` has
+        // become spellable and the phase's primary separation guarantee is
+        // gone.
+        const backRelations = model(targetName)
+          .fields.filter((field) => field.kind === 'object')
+          .filter((field) => Object.keys(PAID_MODELS).includes(field.type))
+          .map((field) => `${targetName}.${field.name}`);
+
+        expect(backRelations).toEqual([]);
+      },
+    );
+
+    it('no payout-side model declares a relation to a paid model at all', () => {
+      const paidModelNames = Object.keys(PAID_MODELS);
+      const offenders = Prisma.dmmf.datamodel.models
+        .filter((entry) => !paidModelNames.includes(entry.name))
+        .flatMap((entry) =>
+          entry.fields
+            .filter((field) => field.kind === 'object' && paidModelNames.includes(field.type))
+            .map((field) => `${entry.name}.${field.name}: ${field.type}`),
+        );
+
+      expect(offenders).toEqual([]);
+    });
+
+    it('no commerce model declares a relation to a paid model, and no paid model declares a relation to a commerce model', () => {
+      const commerceModelNames = Object.keys(COMMERCE_MODELS);
+      const paidModelNames = Object.keys(PAID_MODELS);
+
+      const commerceToPaid = commerceModelNames.flatMap((modelName) =>
+        model(modelName)
+          .fields.filter((field) => field.kind === 'object' && paidModelNames.includes(field.type))
+          .map((field) => `${modelName}.${field.name}: ${field.type}`),
+      );
+
+      const paidToCommerce = paidModelNames.flatMap((modelName) =>
+        model(modelName)
+          .fields.filter(
+            (field) => field.kind === 'object' && commerceModelNames.includes(field.type),
+          )
+          .map((field) => `${modelName}.${field.name}: ${field.type}`),
+      );
+
+      expect(commerceToPaid).toEqual([]);
+      expect(paidToCommerce).toEqual([]);
     });
   });
 });
