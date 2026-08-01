@@ -35,6 +35,20 @@ const CommerceDashboardSection = dynamic(
   { ssr: false, loading: () => <p className="text-muted small mt-4">Loading commerce data…</p> },
 );
 
+/**
+ * Phase 7 — same reasoning as CommerceDashboardSection above, one stream
+ * further. The three-way ESLint zone (frontend/.eslintrc.js, Phase 7) bans
+ * every file under `src/app/dashboard/**` from a static import of anything
+ * under `components/paid/**`, so this page can never end up with a
+ * `DashboardOverview`, a `CommerceSummary`, AND a `PaidSummary` all in scope
+ * at once (design §4.4 / ADR-7.1). Rendered LAST in stacking order —
+ * Payout → Commerce → Paid (design §4.4 signal 6).
+ */
+const PaidDashboardSection = dynamic(
+  () => import('@/components/paid/PaidDashboardSection').then((m) => m.PaidDashboardSection),
+  { ssr: false, loading: () => <p className="text-muted small mt-4">Loading paid/ads data…</p> },
+);
+
 export default function DashboardPage(): JSX.Element {
   const router = useRouter();
   const [user, setUser] = useState<CurrentUser | null>(null);
@@ -252,6 +266,17 @@ export default function DashboardPage(): JSX.Element {
         side by side by accident.
       */}
       <CommerceDashboardSection />
+
+      {/*
+        Phase 7 — the same vertical-stacking-only rule, one stream further
+        (design §4.4 signal 6). Paid renders LAST: Payout → Commerce → Paid,
+        each additional stream getting progressively more visual "distance"
+        from the core payout metric, an honest reflection of evidentiary
+        maturity (payout: measured; commerce: reconciled by hand against a
+        statement; paid: self-reported with no vendor-statement or live-sync
+        check behind it at all this phase).
+      */}
+      <PaidDashboardSection />
     </div>
   );
 }

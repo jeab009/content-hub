@@ -85,8 +85,8 @@ export function CommerceDashboardSection(): JSX.Element {
       </div>
 
       <div className="alert alert-info py-2 mb-3" role="note">
-        Not included in platform payout revenue above. These two figures measure different things
-        and are never added together anywhere in Content Hub.
+        Not included in platform payout revenue above, or in the paid/ads section below. These
+        figures measure different things and are never added together anywhere in Content Hub.
       </div>
 
       {error && (

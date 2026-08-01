@@ -512,9 +512,11 @@ export interface ReportQuery {
   channel?: CommerceChannel;
   /** commerce.csv only (the payout reports key on contentId instead). */
   productId?: string;
+  /** paid.csv only (PaidReportQueryDto — a deliberate small duplicate shape, not a shared import). */
+  campaignId?: string;
 }
 
-export type ReportName = 'revenue' | 'override-log' | 'comment-summary' | 'commerce';
+export type ReportName = 'revenue' | 'override-log' | 'comment-summary' | 'commerce' | 'paid';
 
 function buildReportQuery(query: ReportQuery = {}): string {
   const params = new URLSearchParams();
@@ -524,6 +526,7 @@ function buildReportQuery(query: ReportQuery = {}): string {
   if (query.contentId) params.set('contentId', query.contentId);
   if (query.channel) params.set('channel', query.channel);
   if (query.productId) params.set('productId', query.productId);
+  if (query.campaignId) params.set('campaignId', query.campaignId);
   const qs = params.toString();
   return qs ? `?${qs}` : '';
 }
@@ -824,6 +827,177 @@ function buildCommerceSummaryQuery(query: CommerceSummaryQuery = {}): string {
   const params = new URLSearchParams();
   if (query.channel) params.set('channel', query.channel);
   if (query.productId) params.set('productId', query.productId);
+  if (query.periodStart) params.set('periodStart', query.periodStart);
+  if (query.periodEnd) params.set('periodEnd', query.periodEnd);
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
+// --- Paid / Ads visibility (Phase 7) domain types. String unions mirror the
+// backend Prisma enums / DTOs exactly (backend/prisma/schema.prisma +
+// backend/src/modules/paid/dto/*) — keep them in sync.
+//
+// SEPARATION NOTE (design §2.5, System Analyst SA-P-B): these types share NO
+// field name with the payout vocabulary (DashboardOverview/DashboardRevenue)
+// or the commerce vocabulary (CommerceSummary/CommerceCurrencyTotal) —
+// `totalSpend`/`totalReach`/`entriesCount` here, `revenue` there,
+// `commissionAmount`/`grossSalesAmount` there. No key here is ever named
+// `revenue` or `commissionAmount`, and no component may be handed more than
+// one of the three summary types.
+
+export type AdChannel = 'meta';
+export type AdCampaignStatus = 'active' | 'paused' | 'ended';
+export type AdSource = 'manual' | 'api';
+
+/** API shape of an ad_campaigns row. */
+export interface AdCampaign {
+  id: string;
+  channel: AdChannel;
+  externalCampaignName: string;
+  externalCampaignId: string | null;
+  objective: string;
+  contentId: string | null;
+  startDate: string;
+  endDate: string | null;
+  plannedBudget: number | null;
+  currency: string;
+  status: AdCampaignStatus;
+  isActive: boolean;
+  retiredAt: string | null;
+  source: AdSource;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** API shape of an ad_performance_entries row — one append-only entry. */
+export interface AdPerformanceEntry {
+  id: string;
+  campaignId: string;
+  spend: number;
+  reach: number | null;
+  impressions: number | null;
+  clicks: number | null;
+  resultType: string | null;
+  resultCount: number | null;
+  currency: string;
+  periodStart: string;
+  periodEnd: string;
+  sourceRef: string | null;
+  correctsEntryId: string | null;
+  source: AdSource;
+  recordedBy: string;
+  createdAt: string;
+}
+
+/** One currency's aggregate — NEVER summed across currencies (SA-P6/NFR-7.10, mirrors CommerceCurrencyTotal). */
+export interface PaidCurrencyTotal {
+  currency: string;
+  totalSpend: number;
+  totalReach: number;
+  totalImpressions: number;
+  totalClicks: number;
+  totalResultCount: number;
+  entriesCount: number;
+}
+
+export interface PaidCampaignBreakdownItem extends PaidCurrencyTotal {
+  campaignId: string;
+}
+
+/** `resultType: null` buckets every entry logged with no result label yet — a normal, expected case. */
+export interface PaidResultTypeBreakdownItem extends PaidCurrencyTotal {
+  resultType: string | null;
+}
+
+/** Matches PaidSummaryDto — GET /api/paid/summary. Reads ad_* tables ONLY. */
+export interface PaidSummary {
+  generatedAt: string;
+  totals: PaidCurrencyTotal[];
+  byCampaign: PaidCampaignBreakdownItem[];
+  byResultType: PaidResultTypeBreakdownItem[];
+}
+
+/** Only the params ListPaidCampaignsQueryDto accepts — anything else 400s. */
+export interface ListPaidCampaignsQuery {
+  isActive?: boolean;
+  q?: string;
+  contentId?: string;
+}
+
+/** Body of POST /api/paid/campaigns. `channel` is always `meta` this phase (Decision 3). */
+export interface CreatePaidCampaignInput {
+  channel: AdChannel;
+  externalCampaignName: string;
+  externalCampaignId?: string;
+  objective: string;
+  contentId?: string;
+  startDate: string;
+  endDate?: string;
+  plannedBudget?: number;
+  currency?: string;
+  status?: AdCampaignStatus;
+}
+
+/** Body of PATCH /api/paid/campaigns/:id — channel/externalCampaignId are NOT editable (identity fields). */
+export type UpdatePaidCampaignInput = Partial<{
+  externalCampaignName: string;
+  objective: string;
+  contentId: string;
+  startDate: string;
+  endDate: string;
+  plannedBudget: number;
+  currency: string;
+  status: AdCampaignStatus;
+}>;
+
+/**
+ * Body of POST /api/paid/campaigns/:id/performance-entries — APPEND-ONLY.
+ * `spend` is NEVER negative — a correction is always a NEW row naming the row
+ * it corrects via `correctsEntryId`, never a reversal/negative-amount
+ * mechanic (System Analyst SA-P2, distinct from Commerce's conventions).
+ */
+export interface CreatePerformanceEntryInput {
+  periodStart: string;
+  periodEnd: string;
+  spend: number;
+  reach?: number;
+  impressions?: number;
+  clicks?: number;
+  resultType?: string;
+  resultCount?: number;
+  currency?: string;
+  correctsEntryId?: string;
+  sourceRef?: string;
+}
+
+/** Query for GET /api/paid/campaigns/:id/performance-entries/overlap-check — WARN-ONLY probe. */
+export interface PerformanceOverlapCheckQuery {
+  periodStart: string;
+  periodEnd: string;
+}
+
+/** Query filters for GET /api/paid/summary. */
+export interface PaidSummaryQuery {
+  campaignId?: string;
+  contentId?: string;
+  periodStart?: string;
+  periodEnd?: string;
+}
+
+function buildPaidCampaignsQuery(query: ListPaidCampaignsQuery = {}): string {
+  const params = new URLSearchParams();
+  if (query.isActive !== undefined) params.set('isActive', String(query.isActive));
+  if (query.q) params.set('q', query.q);
+  if (query.contentId) params.set('contentId', query.contentId);
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
+function buildPaidSummaryQuery(query: PaidSummaryQuery = {}): string {
+  const params = new URLSearchParams();
+  if (query.campaignId) params.set('campaignId', query.campaignId);
+  if (query.contentId) params.set('contentId', query.contentId);
   if (query.periodStart) params.set('periodStart', query.periodStart);
   if (query.periodEnd) params.set('periodEnd', query.periodEnd);
   const qs = params.toString();
@@ -1263,4 +1437,56 @@ export const apiClient = {
 
   getContentCommerceSummary: (contentId: string) =>
     request<ContentCommerceSummary>(`/api/commerce/summary/${contentId}`),
+
+  // --- Paid / Ads visibility endpoints (Phase 7). No step-up on any write
+  // (System Analyst SA-P3: a campaign record and a performance entry are both
+  // descriptive facts about something that already happened entirely outside
+  // Content Hub — nothing here pushes live or writes an override fact). ---
+
+  listPaidCampaigns: (query?: ListPaidCampaignsQuery) =>
+    request<AdCampaign[]>(`/api/paid/campaigns${buildPaidCampaignsQuery(query)}`),
+
+  createPaidCampaign: (body: CreatePaidCampaignInput, csrfToken: string) =>
+    request<AdCampaign>('/api/paid/campaigns', { method: 'POST', body, csrfToken }),
+
+  updatePaidCampaign: (id: string, body: UpdatePaidCampaignInput, csrfToken: string) =>
+    request<AdCampaign>(`/api/paid/campaigns/${id}`, { method: 'PATCH', body, csrfToken }),
+
+  /** Soft-retire (isActive=false, retiredAt=now) — never a hard delete. */
+  retirePaidCampaign: (id: string, csrfToken: string) =>
+    request<AdCampaign>(`/api/paid/campaigns/${id}/retire`, { method: 'POST', csrfToken }),
+
+  /** Newest-first append-only history for one campaign. */
+  listPerformanceEntries: (campaignId: string) =>
+    request<AdPerformanceEntry[]>(`/api/paid/campaigns/${campaignId}/performance-entries`),
+
+  /**
+   * Appends one performance entry (never edits/deletes — there is no such
+   * route). Errors worth handling distinctly: 409 an identical payload was
+   * already recorded within the last 60s (idempotency guard), 400 a
+   * `correctsEntryId` belongs to a different campaign, 404 the campaign or
+   * the corrected entry was not found.
+   */
+  createPerformanceEntry: (campaignId: string, body: CreatePerformanceEntryInput, csrfToken: string) =>
+    request<AdPerformanceEntry>(`/api/paid/campaigns/${campaignId}/performance-entries`, {
+      method: 'POST',
+      body,
+      csrfToken,
+    }),
+
+  /** Warn-only overlap probe for the entry form — debounce on date change. */
+  checkPerformanceOverlap: (campaignId: string, query: PerformanceOverlapCheckQuery) =>
+    request<{ overlaps: AdPerformanceEntry[] }>(
+      `/api/paid/campaigns/${campaignId}/performance-entries/overlap-check?${new URLSearchParams({
+        periodStart: query.periodStart,
+        periodEnd: query.periodEnd,
+      }).toString()}`,
+    ),
+
+  // --- Paid read model (separate from the payout AND commerce read models
+  // above — reads ad_campaigns/ad_performance_entries ONLY, never joined
+  // with metrics or commerce_conversions). ---
+
+  getPaidSummary: (query?: PaidSummaryQuery) =>
+    request<PaidSummary>(`/api/paid/summary${buildPaidSummaryQuery(query)}`),
 };

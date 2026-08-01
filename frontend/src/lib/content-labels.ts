@@ -1,4 +1,6 @@
 import type {
+  AdCampaignStatus,
+  AdChannel,
   AspectRatio,
   AssetPlatform,
   CadencePaceStatus,
@@ -157,6 +159,33 @@ const PLACEMENT_STATUS_BADGE: Record<CommercePlacementStatus, string> = {
   removed: 'bg-secondary',
 };
 
+// --- Paid / Ads (Phase 7). AdChannel is a NEW enum, distinct from
+// AssetPlatform/PostPlatform/CommerceChannel — never merged into those maps
+// (design §1.1/Decision 3: Meta-only, no generic multi-channel abstraction). ---
+
+export const PAID_CHANNELS: AdChannel[] = ['meta'];
+
+const AD_CHANNEL_LABELS: Record<AdChannel, string> = { meta: 'Meta' };
+
+/** bg-primary's default white text already clears contrast — no text-dark pairing needed
+ * (global_config §2.2's forced-pairing rule applies only to warning/info). */
+const AD_CHANNEL_BADGE: Record<AdChannel, string> = { meta: 'bg-primary' };
+
+export const CAMPAIGN_STATUSES: AdCampaignStatus[] = ['active', 'paused', 'ended'];
+
+const CAMPAIGN_STATUS_LABELS: Record<AdCampaignStatus, string> = {
+  active: 'Active',
+  paused: 'Paused',
+  ended: 'Ended',
+};
+
+/** Mirrors the existing PostStatus pattern: live=success, caution=warning+dark, archived=dark. */
+const CAMPAIGN_STATUS_BADGE: Record<AdCampaignStatus, string> = {
+  active: 'bg-success',
+  paused: 'bg-warning text-dark',
+  ended: 'bg-dark',
+};
+
 /** THB currency, 2 dp (revenue = platform payout, makedown.md §6). */
 export function formatTHB(value: number): string {
   return new Intl.NumberFormat('en-US', {
@@ -211,4 +240,8 @@ export const labels = {
   placementStatus: (value: CommercePlacementStatus): string => PLACEMENT_STATUS_LABELS[value],
   placementStatusBadgeClass: (value: CommercePlacementStatus): string =>
     PLACEMENT_STATUS_BADGE[value],
+  adChannel: (value: AdChannel): string => AD_CHANNEL_LABELS[value],
+  adChannelBadgeClass: (value: AdChannel): string => AD_CHANNEL_BADGE[value],
+  campaignStatus: (value: AdCampaignStatus): string => CAMPAIGN_STATUS_LABELS[value],
+  campaignStatusBadgeClass: (value: AdCampaignStatus): string => CAMPAIGN_STATUS_BADGE[value],
 };

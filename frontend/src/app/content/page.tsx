@@ -27,6 +27,14 @@ export default function ContentLibraryPage(): JSX.Element {
   const [filters, setFilters] = useState<ListContentQuery>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Display-only "this content had a logged paid campaign" chip (design
+  // §4.5, Decision 4 item 4) — derived client-side from the ALREADY
+  // authorized GET /api/paid/campaigns list, the identical technique /posts
+  // uses for its "Anchored (n)" chip. No ranking read, no priority change,
+  // no new backend endpoint. Counts EVERY linked campaign, any lifecycle
+  // status/retire-state — a retired campaign still means "this had a logged
+  // paid campaign," a historical fact that stays true after retirement.
+  const [paidCampaignCounts, setPaidCampaignCounts] = useState<Map<string, number>>(new Map());
 
   const loadContents = useCallback(
     async (activeFilters: ListContentQuery) => {
@@ -49,6 +57,18 @@ export default function ContentLibraryPage(): JSX.Element {
       setUser(currentUser);
       setCsrfToken(csrf.csrfToken);
       await loadContents({});
+      // Best-effort — a failure here is non-fatal, the chip just shows "—".
+      try {
+        const campaigns = await apiClient.listPaidCampaigns();
+        const counts = new Map<string, number>();
+        for (const campaign of campaigns) {
+          if (!campaign.contentId) continue;
+          counts.set(campaign.contentId, (counts.get(campaign.contentId) ?? 0) + 1);
+        }
+        setPaidCampaignCounts(counts);
+      } catch {
+        // leave uncounted
+      }
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         router.push('/login');
@@ -182,6 +202,7 @@ export default function ContentLibraryPage(): JSX.Element {
                 <th scope="col">Pillar</th>
                 <th scope="col">Status</th>
                 <th scope="col">Copyright</th>
+                <th scope="col">Paid</th>
                 <th scope="col" className="text-end">
                   Actions
                 </th>
@@ -209,6 +230,15 @@ export default function ContentLibraryPage(): JSX.Element {
                     <span className={`badge ${labels.clearanceBadgeClass(content.copyrightCleared)}`}>
                       {labels.clearance(content.copyrightCleared)}
                     </span>
+                  </td>
+                  <td>
+                    {(paidCampaignCounts.get(content.id) ?? 0) > 0 ? (
+                      <span className="badge bg-primary">
+                        Ad campaign ({paidCampaignCounts.get(content.id)})
+                      </span>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
                   </td>
                   <td className="text-end">
                     <Link

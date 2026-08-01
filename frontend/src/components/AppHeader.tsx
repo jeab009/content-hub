@@ -13,6 +13,7 @@ const NAV_LINKS = [
   { href: '/scheduler', label: 'Scheduler' },
   { href: '/posts', label: 'Posts' },
   { href: '/commerce', label: 'Commerce' },
+  { href: '/paid', label: 'Paid' },
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/comments', label: 'Comments' },
   { href: '/settings', label: 'Settings' },

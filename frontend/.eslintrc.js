@@ -26,6 +26,14 @@
  * The commerce paths are declared AHEAD of the 6B code that will fill them.
  * The zone has to exist before the files do, or the first commerce component
  * ships unguarded and the rule arrives as a retrofit nobody wants to apply.
+ *
+ * PHASE 7 — LAYER 2 EXTENDED TO A THIRD STREAM (paid/ads), THREE-WAY
+ * (docs/phase7-architecture-design.md §2.2, System Analyst condition P-B1).
+ *
+ * Three streams means three pairwise boundaries: payout↔commerce (already
+ * above), payout↔paid, and commerce↔paid. Each of the three overrides below
+ * bans BOTH of the other two streams from its own files, so no override only
+ * has to be extended once per new stream rather than reworked from scratch.
  */
 module.exports = {
   extends: 'next/core-web-vitals',
@@ -54,6 +62,13 @@ module.exports = {
                   'C-A/C-B/C-C), not a UI tweak. Render the commerce section as its own component ' +
                   'with its own props type; no component may be handed both totals.',
               },
+              {
+                group: ['**/paid/**', '**/paid', '**/lib/paid*'],
+                message:
+                  'Payout dashboard components must never import a paid/ads module (Phase 7, ' +
+                  'phase7-project-plan.md Decision 4/P-A). Render the paid section as its own ' +
+                  'component with its own props type; no component may be handed both totals.',
+              },
             ],
           },
         ],
@@ -62,7 +77,8 @@ module.exports = {
     {
       // The symmetric COMMERCE side. Without it the ban is one-directional and
       // a commerce card could import the payout overview hook "for context" —
-      // the same bug arriving from the other end.
+      // the same bug arriving from the other end. Phase 7 also bans commerce
+      // from importing paid — the third leg of the triangle.
       files: [
         'src/components/commerce/**/*.ts',
         'src/components/commerce/**/*.tsx',
@@ -88,6 +104,51 @@ module.exports = {
                 ],
                 message:
                   'Commerce components must never import a payout dashboard module. Two streams, two totals.',
+              },
+              {
+                group: ['**/paid/**', '**/paid', '**/lib/paid*'],
+                message:
+                  'Commerce components must never import a paid/ads module (Phase 7, ' +
+                  'phase7-project-plan.md Decision 4/P-A). Three streams, three totals.',
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      // Phase 7 — the PAID side, banning BOTH of the other two streams
+      // (payout and commerce) from its own files (design §2.2, condition
+      // P-B1/P-B4). PaidModule's only legitimate cross-stream need is a
+      // read-only content lookup (ContentModule-equivalent), never dashboard,
+      // reports, or commerce.
+      files: [
+        'src/components/paid/**/*.ts',
+        'src/components/paid/**/*.tsx',
+        'src/app/paid/**/*.ts',
+        'src/app/paid/**/*.tsx',
+      ],
+      rules: {
+        'no-restricted-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: [
+                  '**/dashboard/**',
+                  '**/reports/**',
+                  '**/lib/dashboard*',
+                  '**/lib/reports*',
+                ],
+                message:
+                  'Paid/ads components must never import a payout dashboard module (Phase 7, ' +
+                  'phase7-project-plan.md Decision 4/P-A). Three streams, three totals.',
+              },
+              {
+                group: ['**/commerce/**', '**/commerce', '**/lib/commerce*'],
+                message:
+                  'Paid/ads components must never import a commerce module (Phase 7, ' +
+                  'phase7-project-plan.md Decision 4/P-A). Three streams, three totals.',
               },
             ],
           },
