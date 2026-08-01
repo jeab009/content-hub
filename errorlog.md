@@ -324,3 +324,9 @@ Docker rebuilt, backend boots clean ("Nest application successfully started"). `
 ## Phase 7C.4 (System Analyst final re-verify) — 2026-08-01
 
 Re-verify ทั้ง 12 เงื่อนไขจาก 7.0 gate กับโค้ดที่ ship จริง (ไม่ใช่ commit message) — อ่านทุก constant/service call-site/migration SQL/meta object literal เอง. Trace fix ทั้ง 2 ตัว (BUG-7A-01/7B-01) ด้วยมือ รวม partial-update "effective range" subtlety. **Adversarial check หา defect class เดียวกันในจุดที่ 3** — ไล่ CHECK constraint ทั้ง 11 ตัวใน migration ทีละตัว ไม่เจอเพิ่ม (reasoned negative result). Re-run สดทุกอย่าง: separation suite 5 files/55 tests, backend 711/711, frontend 169/169, e2e byte-identity 28/28 (DB จริง). PDPA re-verify column-by-column กับ schema จริง. 1 เงื่อนไข (P-B2, CI history claim) flag เป็น unverifiable ไม่ใช่ pass เฉยๆ. **SIGNED OFF — Phase 7 (7.0→7B) ปิดสมบูรณ์**. 7D (live-sync spec, non-blocking) ยังไม่ทำ แต่ยืนยันว่าไม่ block การปิด phase.
+
+## Phase 7D (live-sync spec + rejecting stub) — 2026-08-01
+
+`docs/phase7d-live-integration-spec.md` (Meta Marketing/Insights API, `ads_read` scope reopen Meta App Review, field mapping กับ schema จริง) + `PaidLiveAdapter` rejecting stub mirror pattern Commerce's 6D เป๊ะ (throw + audit `paid_adapter_unavailable`, zero network I/O). ตัดสินใจดี: ใช้ env flag `PAID_IMPL_META=disabled|meta` แทน `mock|live` เดิม เพราะ Paid ไม่มี mock data-pull จริง (`disabled` ตรงกับความจริงมากกว่า). Stub ไม่ได้ wire เข้า `PaidModule` เพราะไม่มี consumer/endpoint ใดเรียกใช้เลย (ไม่มีปุ่ม "sync now" ใน UI ที่ ship). Verify เอง: อ่าน stub code ตรง, เช็ค `assert-adapter-flags-safe.ts` ครอบคลุม flag ใหม่จริง, grep ไม่มี live HTTP call จริง (เจอแค่ comment), **719/719 tests**, rebuild docker boot สะอาด.
+
+**Phase 7 (7.0→7D) ปิดสมบูรณ์ทั้งหมด**.
