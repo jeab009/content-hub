@@ -3,6 +3,7 @@ import { AdminGuard } from '../../common/guards/admin.guard';
 import { ReportsController } from './reports.controller';
 import { ReportExportService } from './report-export.service';
 import { CommerceExportService } from '../commerce/commerce-export.service';
+import { PaidExportService } from '../paid/paid-export.service';
 
 /**
  * Phase 5A.6 — CSV report exports (revenue drill-down, override log, comment
@@ -20,10 +21,14 @@ import { CommerceExportService } from '../commerce/commerce-export.service';
  * export module has no business depending on. `ReportsController` is the
  * one file allowed to see both export services (design §3.2 / the
  * frozen-header test is the price of that exemption).
+ *
+ * Phase 7A.4 adds `PaidExportService` the same way, for the same reason:
+ * importing `PaidModule` here would pull in `ContentModule` transitively,
+ * which this CSV export module also has no business depending on.
  */
 @Module({
   controllers: [ReportsController],
-  providers: [ReportExportService, CommerceExportService, AdminGuard],
+  providers: [ReportExportService, CommerceExportService, PaidExportService, AdminGuard],
   exports: [ReportExportService],
 })
 export class ReportsModule {}

@@ -42,6 +42,10 @@ import { RankingEngineV2Service } from '../../modules/ranking/ranking-engine-v2.
 import { RankingFactorsService } from '../../modules/ranking/ranking-factors.service';
 import { RankingFactorsV2Service } from '../../modules/ranking/ranking-factors-v2.service';
 import { ReportExportService } from '../../modules/reports/report-export.service';
+import { CommerceReadService } from '../../modules/commerce/commerce-read.service';
+import { CommerceExportService } from '../../modules/commerce/commerce-export.service';
+import { PaidReadService } from '../../modules/paid/paid-read.service';
+import { PaidExportService } from '../../modules/paid/paid-export.service';
 import { PrismaService } from '../../modules/prisma/prisma.service';
 import { PAYOUT_IDS, RANKED_CONTENT_IDS } from './payout-fixture';
 
@@ -54,6 +58,16 @@ export interface Baseline {
   contentRevenueBytes: Buffer;
   revenueCsv: Buffer;
   overrideLogCsv: Buffer;
+  /**
+   * Phase 7 addition — the commerce summary/CSV bytes, captured for the
+   * FIRST time as part of a "must remain unchanged" baseline (design §2.4:
+   * "which Phase 6's own fixture already captured but which must now
+   * additionally survive paid data existing, not just payout surviving
+   * commerce"). Phase 6 never needed this in the Baseline type itself
+   * because there was no third stream yet to threaten it.
+   */
+  commerceSummaryBytes: Buffer;
+  commerceCsv: Buffer;
   scores: Buffer;
 }
 
@@ -141,24 +155,35 @@ export async function rankAllContent(prisma: PrismaClient): Promise<void> {
   }
 }
 
-/** Captures every payout read surface in one pass. */
+/** Captures every payout AND commerce read surface in one pass. */
 export async function captureBaseline(prisma: PrismaClient): Promise<Baseline> {
   // The read services take a PrismaService; a PrismaClient is structurally the
   // same object with two lifecycle hooks the fixture manages itself.
   const prismaService = prisma as PrismaService;
   const dashboard = new DashboardService(prismaService);
   const reports = new ReportExportService(prismaService);
+  const commerceRead = new CommerceReadService(prismaService);
+  const commerceExport = new CommerceExportService(prismaService);
 
-  const [overview, revenue, contentRevenue, revenueCsv, overrideLogCsv, scores] = await Promise.all(
-    [
-      dashboard.overview(FIXED_NOW),
-      dashboard.revenue(FIXED_NOW),
-      dashboard.contentRevenue(PAYOUT_IDS.contentA, FIXED_NOW),
-      reports.revenueCsv({}),
-      reports.overrideLogCsv({}),
-      captureScores(prisma),
-    ],
-  );
+  const [
+    overview,
+    revenue,
+    contentRevenue,
+    revenueCsv,
+    overrideLogCsv,
+    commerceSummary,
+    commerceCsv,
+    scores,
+  ] = await Promise.all([
+    dashboard.overview(FIXED_NOW),
+    dashboard.revenue(FIXED_NOW),
+    dashboard.contentRevenue(PAYOUT_IDS.contentA, FIXED_NOW),
+    reports.revenueCsv({}),
+    reports.overrideLogCsv({}),
+    commerceRead.summary({}, FIXED_NOW),
+    commerceExport.commerceCsv({}),
+    captureScores(prisma),
+  ]);
 
   return {
     overviewBytes: toBytes(withoutGeneratedAt(overview)),
@@ -169,6 +194,36 @@ export async function captureBaseline(prisma: PrismaClient): Promise<Baseline> {
     // "commission" column by accident.
     revenueCsv: Buffer.from(revenueCsv, 'utf8'),
     overrideLogCsv: Buffer.from(overrideLogCsv, 'utf8'),
+    commerceSummaryBytes: toBytes(withoutGeneratedAt(commerceSummary)),
+    commerceCsv: Buffer.from(commerceCsv, 'utf8'),
     scores,
+  };
+}
+
+/**
+ * Phase 7 — captures the PAID read surface. Deliberately NOT part of
+ * `Baseline`/`captureBaseline`: paid artefacts do not exist before the paid
+ * fixture is seeded, so there is no "before" value to compare against —
+ * unlike payout/commerce, which must read identically whether or not paid
+ * data exists. This function exists so the e2e proof can positively assert
+ * the paid data landed and is visible on its OWN read surface, which is the
+ * other half of "three separate streams" (not summed, but each still
+ * genuinely working).
+ */
+export async function capturePaidArtifacts(
+  prisma: PrismaClient,
+): Promise<{ summaryBytes: Buffer; csv: Buffer }> {
+  const prismaService = prisma as PrismaService;
+  const paidRead = new PaidReadService(prismaService);
+  const paidExport = new PaidExportService(prismaService);
+
+  const [summary, csv] = await Promise.all([
+    paidRead.summary({}, FIXED_NOW),
+    paidExport.paidCsv({}),
+  ]);
+
+  return {
+    summaryBytes: toBytes(withoutGeneratedAt(summary)),
+    csv: Buffer.from(csv, 'utf8'),
   };
 }

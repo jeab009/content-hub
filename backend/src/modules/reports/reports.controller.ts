@@ -8,6 +8,8 @@ import { ReportExportService } from './report-export.service';
 import { ReportQueryDto } from './dto/report-query.dto';
 import { CommerceExportService } from '../commerce/commerce-export.service';
 import { CommerceReportQueryDto } from '../commerce/dto/commerce-report-query.dto';
+import { PaidExportService } from '../paid/paid-export.service';
+import { PaidReportQueryDto } from '../paid/dto/paid-report-query.dto';
 
 /**
  * CSV report exports. Admin-only and read-only, so no CsrfGuard — the same
@@ -27,6 +29,11 @@ import { CommerceReportQueryDto } from '../commerce/dto/commerce-report-query.dt
  * importing `**\/reports/**`, and bans every payout-side file EXCEPT this
  * one from importing commerce) — the price of that exemption is the frozen
  * CSV headers in `src/testing/separation/csv-header-freeze.spec.ts`.
+ *
+ * `paid.csv` (7A.4) is mounted the same way, via `PaidExportService` — a
+ * THIRD separate report, never a column on `revenue.csv` or `commerce.csv`.
+ * This controller is now the one file in the codebase permitted to see all
+ * three export services; the price is the same frozen-header test, extended.
  */
 @Controller('api/reports')
 @UseGuards(SessionAuthGuard, AdminGuard)
@@ -34,6 +41,7 @@ export class ReportsController {
   constructor(
     private readonly reports: ReportExportService,
     private readonly commerceExport: CommerceExportService,
+    private readonly paidExport: PaidExportService,
     private readonly auditLog: AuditLogService,
   ) {}
 
@@ -98,6 +106,33 @@ export class ReportsController {
           to: query.to ?? null,
           channel: query.channel ?? null,
           productId: query.productId ?? null,
+        },
+      },
+    });
+    return csv;
+  }
+
+  @Get('paid.csv')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  @Header('Content-Disposition', 'attachment; filename="paid-report.csv"')
+  async paid(
+    @Query() query: PaidReportQueryDto,
+    @CurrentUserId() userId: string,
+    @Req() request: Request,
+  ): Promise<string> {
+    const csv = await this.paidExport.paidCsv(query);
+    this.auditLog.record({
+      actor: userId,
+      action: 'paid_report_exported',
+      result: 'success',
+      ip: request.ip,
+      meta: {
+        report: 'paid',
+        format: 'csv',
+        filters: {
+          from: query.from ?? null,
+          to: query.to ?? null,
+          campaignId: query.campaignId ?? null,
         },
       },
     });

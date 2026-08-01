@@ -44,6 +44,14 @@ const TRUNCATE_ORDER = [
   'affiliate_links',
   'commerce_placements',
   'commerce_products',
+  // Phase 7 — paid/ads visibility. Children before parent: entries reference
+  // campaigns (RESTRICT) and themselves via corrects_entry_id (self-FK,
+  // SET NULL); campaigns reference contents (SET NULL) and users (RESTRICT).
+  // A single TRUNCATE ... CASCADE statement resolves these regardless of
+  // list order, but the order is kept honest here for the same documentation
+  // reason the commerce block above is ordered.
+  'ad_performance_entries',
+  'ad_campaigns',
   'comments',
   'comment_reply_templates',
   'escalation_alerts',
@@ -224,6 +232,33 @@ export async function assertCommerceSchemaPresent(prisma: PrismaClient): Promise
         .join(', ') || '(none)';
     throw new Error(
       `The Phase 6 commerce migration is not applied to this database. Found: ${found}. ` +
+        'Run `npx prisma migrate deploy` first.',
+    );
+  }
+}
+
+/**
+ * Phase 7 sibling of `assertCommerceSchemaPresent` — asserts the paid
+ * migration is actually applied, converting the most likely setup mistake
+ * (forgetting `prisma migrate deploy` after pulling this phase's migration)
+ * into a sentence rather than an opaque Prisma error from the fixture.
+ */
+export async function assertPaidSchemaPresent(prisma: PrismaClient): Promise<void> {
+  const rows = await prisma.$queryRaw<{ table_name: string }[]>`
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_name IN ('ad_campaigns', 'ad_performance_entries')
+  `;
+
+  if (rows.length !== 2) {
+    const found =
+      rows
+        .map((row) => row.table_name)
+        .sort()
+        .join(', ') || '(none)';
+    throw new Error(
+      `The Phase 7 paid migration is not applied to this database. Found: ${found}. ` +
         'Run `npx prisma migrate deploy` first.',
     );
   }

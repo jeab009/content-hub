@@ -99,6 +99,21 @@ module.exports = {
                   'Payout and ranking modules must never read a commerce table. If you believe you ' +
                   'need this, it is a new admin decision, not a refactor.',
               },
+              {
+                // Phase 7 — the same rule, extended to the third stream
+                // (design §2.2, System Analyst condition P-B4). Note this
+                // does NOT ban `**/content/**` — `src/modules/content/**`
+                // is itself covered by THIS override's `files` list, so it
+                // is banned from importing paid/commerce like every other
+                // entry here, but nothing bans PaidModule from importing
+                // ContentModule (that ban lives on the paid-side override
+                // below, and it deliberately omits `content`).
+                group: ['**/paid/**', '**/modules/paid'],
+                message:
+                  'Paid/ads is a structurally separate stream (phase7-project-plan.md Decision 4). ' +
+                  'Payout and ranking modules must never read a paid table. If you believe you need ' +
+                  'this, it is a new admin decision, not a refactor.',
+              },
             ],
           },
         ],
@@ -133,6 +148,52 @@ module.exports = {
                 ],
                 message:
                   'Commerce must not read the payout/ranking stream. Two streams, two totals.',
+              },
+              {
+                // Phase 7 — closes the third leg of the triangle: commerce
+                // must not import paid either (design §2.2, System Analyst
+                // condition P-B4). payout<->paid and payout<->commerce were
+                // already banned above; commerce<->paid is the one Phase 7 adds.
+                group: ['**/paid/**', '**/modules/paid'],
+                message:
+                  'Commerce must not read the paid/ads stream. Three streams, three totals.',
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      // The PAID side (design §2.2, System Analyst condition P-B4). Paid must
+      // not read the metric/ranking/payout stream OR the commerce stream.
+      // Deliberately does NOT ban `**/content/**`, `**/common/**`,
+      // `**/scheduler/**`, `**/queue/**`, or `**/publish/**` — PaidModule
+      // legitimately imports `ContentModule` (the content picker lookup) and
+      // `common/*` (audit logging), and imports nothing else at all. Its
+      // import graph must stay exactly `{ContentModule, common/*}` — no path
+      // to PublishModule (so no step-up dependency), RankingModule,
+      // MetricsModule, DashboardModule, or CommerceModule.
+      files: ['src/modules/paid/**/*.ts'],
+      rules: {
+        'no-restricted-imports': [
+          'error',
+          {
+            patterns: [
+              {
+                group: [
+                  '**/metrics/**',
+                  '**/ranking/**',
+                  '**/dashboard/**',
+                  '**/reports/**',
+                  '**/commerce/**',
+                  '**/modules/metrics',
+                  '**/modules/ranking',
+                  '**/modules/dashboard',
+                  '**/modules/reports',
+                  '**/modules/commerce',
+                ],
+                message:
+                  'Paid must not read the payout/ranking or commerce stream. Three streams, three totals.',
               },
             ],
           },

@@ -16,6 +16,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { CommentsModule } from './modules/comments/comments.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { CommerceModule } from './modules/commerce/commerce.module';
+import { PaidModule } from './modules/paid/paid.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { CommerceModule } from './modules/commerce/commerce.module';
     CommentsModule,
     ReportsModule,
     CommerceModule,
+    PaidModule,
   ],
 })
 export class AppModule {}

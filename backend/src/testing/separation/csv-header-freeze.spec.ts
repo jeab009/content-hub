@@ -30,6 +30,7 @@ import {
   OVERRIDE_LOG_CSV_HEADERS,
   REVENUE_CSV_HEADERS,
 } from '../../modules/reports/report-export.service';
+import { PAID_CSV_HEADERS } from '../../modules/paid/paid-export.service';
 
 describe('Phase 6 separation — payout CSV header freeze', () => {
   it('revenue.csv headers are frozen (no commerce column may be appended)', () => {
@@ -92,5 +93,55 @@ describe('Phase 6 separation — payout CSV header freeze', () => {
     ];
 
     expect(allHeaders.filter((header) => commerceVocabulary.test(header))).toEqual([]);
+  });
+});
+
+/**
+ * Phase 7 — frozen CSV header for the paid export (design §3.2, WBS 7A.4),
+ * mirroring the Phase 6 describe block above exactly. `paid.csv` is a THIRD
+ * separate report, never a column on `revenue.csv` or `commerce.csv`. `NO
+ * source_ref` column — the highest-residual PII free-text field on
+ * `ad_performance_entries` is never exported (System Analyst SA-P1), the
+ * same posture Commerce shipped for `statement_ref`.
+ */
+describe('Phase 7 separation — paid CSV header freeze', () => {
+  it('paid.csv headers are frozen (no payout or commerce column may be appended)', () => {
+    expect([...PAID_CSV_HEADERS]).toEqual([
+      'campaign_id',
+      'channel',
+      'period_start',
+      'period_end',
+      'spend',
+      'reach',
+      'impressions',
+      'clicks',
+      'result_type',
+      'result_count',
+      'currency',
+      'corrects_entry_id',
+      'source',
+      'recorded_by',
+      'created_at',
+    ]);
+  });
+
+  it('no paid export header uses payout or commerce vocabulary, and no payout/commerce header uses paid vocabulary', () => {
+    const commerceVocabulary = /commission|gross_sales|orders_count|items_sold|affiliate|shopee/i;
+    const payoutVocabulary = /revenue|engagement/i;
+    const paidVocabulary = /total_spend|entries_count|campaign_id/i;
+
+    const payoutAndCommerceHeaders = [
+      ...REVENUE_CSV_HEADERS,
+      ...OVERRIDE_LOG_CSV_HEADERS,
+      ...COMMENT_SUMMARY_CSV_HEADERS,
+    ];
+
+    expect(PAID_CSV_HEADERS.filter((header) => commerceVocabulary.test(header))).toEqual([]);
+    expect(PAID_CSV_HEADERS.filter((header) => payoutVocabulary.test(header))).toEqual([]);
+    expect(payoutAndCommerceHeaders.filter((header) => paidVocabulary.test(header))).toEqual([]);
+  });
+
+  it('paid.csv never carries source_ref (System Analyst SA-P1 — never exported)', () => {
+    expect(PAID_CSV_HEADERS).not.toContain('source_ref');
   });
 });
