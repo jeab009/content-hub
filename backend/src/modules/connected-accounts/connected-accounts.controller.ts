@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { SessionAuthGuard } from '../../common/guards/session-auth.guard';
+import { AdminGuard } from '../../common/guards/admin.guard';
 import { CsrfGuard } from '../../common/guards/csrf.guard';
 import { CurrentUserId } from '../../common/decorators/current-user.decorator';
 import { AuditLogService } from '../../common/audit/audit-log.service';
@@ -31,6 +32,7 @@ import { ConnectedAccountResponseDto } from './dto/connected-account-response.dt
  * same structure with its own state keys and token exchange.
  */
 @Controller('api/connected-accounts')
+@UseGuards(SessionAuthGuard, AdminGuard)
 export class ConnectedAccountsController {
   constructor(
     private readonly connectedAccountsService: ConnectedAccountsService,
@@ -41,13 +43,11 @@ export class ConnectedAccountsController {
   ) {}
 
   @Get()
-  @UseGuards(SessionAuthGuard)
   async list(@CurrentUserId() userId: string): Promise<ConnectedAccountResponseDto[]> {
     return this.connectedAccountsService.listForUser(userId);
   }
 
   @Get('facebook/authorize')
-  @UseGuards(SessionAuthGuard)
   authorize(@Req() request: Request, @Res() response: Response): void {
     const state = this.oauthStateService.generate(request.session);
     const consentUrl = this.facebookClient.buildConsentUrl(state);
@@ -55,7 +55,6 @@ export class ConnectedAccountsController {
   }
 
   @Get('facebook/callback')
-  @UseGuards(SessionAuthGuard)
   async callback(
     @Req() request: Request,
     @Res() response: Response,
@@ -69,7 +68,6 @@ export class ConnectedAccountsController {
 
   /** Google/YouTube connect — same authorize/callback structure as Facebook. */
   @Get('google/authorize')
-  @UseGuards(SessionAuthGuard)
   googleAuthorize(@Req() request: Request, @Res() response: Response): void {
     this.googleClient.assertConfigured();
     const state = this.oauthStateService.generate(request.session, 'google');
@@ -78,7 +76,6 @@ export class ConnectedAccountsController {
   }
 
   @Get('google/callback')
-  @UseGuards(SessionAuthGuard)
   async googleCallback(
     @Req() request: Request,
     @Res() response: Response,
@@ -158,7 +155,7 @@ export class ConnectedAccountsController {
   }
 
   @Delete(':id')
-  @UseGuards(SessionAuthGuard, CsrfGuard)
+  @UseGuards(CsrfGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
   async disconnect(@Param('id') id: string, @CurrentUserId() userId: string): Promise<void> {
     await this.connectedAccountsService.disconnect(id, userId);
