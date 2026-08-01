@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { AdCampaign, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../../common/audit/audit-log.service';
@@ -35,6 +40,16 @@ export class PaidCampaignService {
       await this.content.findOne(dto.contentId);
     }
 
+    const startDate = new Date(dto.startDate);
+    const endDate = dto.endDate ? new Date(dto.endDate) : null;
+    // BUG-7A-01: this must reject BEFORE reaching Postgres, mirroring the
+    // P2002-to-409 translation below — the DB CHECK
+    // (ad_campaigns_date_range_chk) already stops the bad row, but a raw
+    // PrismaClientUnknownRequestError surfaced as an opaque 500 instead of
+    // naming the field, the exact failure mode this codebase already knows
+    // how to avoid one line away.
+    this.assertValidDateRange(startDate, endDate);
+
     const campaign = await this.createOrConflict(
       {
         channel: dto.channel,
@@ -42,8 +57,8 @@ export class PaidCampaignService {
         externalCampaignId: dto.externalCampaignId ?? null,
         objective: dto.objective,
         contentId: dto.contentId ?? null,
-        startDate: new Date(dto.startDate),
-        endDate: dto.endDate ? new Date(dto.endDate) : null,
+        startDate,
+        endDate,
         plannedBudget:
           dto.plannedBudget !== undefined ? new Prisma.Decimal(dto.plannedBudget) : null,
         currency,
@@ -68,10 +83,20 @@ export class PaidCampaignService {
   }
 
   async update(id: string, dto: UpdatePaidCampaignDto, userId: string): Promise<AdCampaign> {
-    await this.findOrThrow(id);
+    const existing = await this.findOrThrow(id);
     if (dto.contentId) {
       await this.content.findOne(dto.contentId);
     }
+
+    // BUG-7A-01: a partial update can change either boundary alone, so the
+    // check must run against the EFFECTIVE range (existing value merged with
+    // whichever field this request overrides), not just the two incoming
+    // fields in isolation — an update that only sends a new `endDate` must
+    // still be checked against the campaign's existing `startDate`.
+    const effectiveStartDate = dto.startDate ? new Date(dto.startDate) : existing.startDate;
+    const effectiveEndDate =
+      dto.endDate !== undefined ? (dto.endDate ? new Date(dto.endDate) : null) : existing.endDate;
+    this.assertValidDateRange(effectiveStartDate, effectiveEndDate);
 
     const data: Prisma.AdCampaignUpdateInput = {
       ...(dto.externalCampaignName !== undefined && {
@@ -136,6 +161,22 @@ export class PaidCampaignService {
       throw new NotFoundException('Ad campaign not found');
     }
     return campaign;
+  }
+
+  /**
+   * BUG-7A-01: reject `endDate < startDate` with a clean 400 before it ever
+   * reaches the DB CHECK (`ad_campaigns_date_range_chk`). A `null` endDate
+   * ("still running", design §1.2) always passes — mirrors the DB CHECK's
+   * own `end_date IS NULL OR end_date >= start_date` shape exactly, so the
+   * two can never disagree.
+   */
+  private assertValidDateRange(startDate: Date, endDate: Date | null): void {
+    if (endDate !== null && endDate < startDate) {
+      throw new BadRequestException(
+        `endDate (${endDate.toISOString().slice(0, 10)}) must not be before startDate ` +
+          `(${startDate.toISOString().slice(0, 10)}).`,
+      );
+    }
   }
 
   /** Translates the UNIQUE(channel, externalCampaignId) violation into a 409. */

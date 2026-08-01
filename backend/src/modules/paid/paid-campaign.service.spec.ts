@@ -126,6 +126,27 @@ describe('PaidCampaignService', () => {
         ConflictException,
       );
     });
+
+    describe('BUG-7A-01: endDate before startDate rejects with a clean 400, not a raw DB error', () => {
+      it('rejects endDate before startDate', async () => {
+        await expect(
+          service.create(dto({ startDate: '2026-07-10', endDate: '2026-07-01' }), 'user-1'),
+        ).rejects.toThrow(BadRequestException);
+        expect(prisma.adCampaign.create).not.toHaveBeenCalled();
+      });
+
+      it('accepts endDate equal to startDate', async () => {
+        await expect(
+          service.create(dto({ startDate: '2026-07-10', endDate: '2026-07-10' }), 'user-1'),
+        ).resolves.toBeDefined();
+      });
+
+      it('accepts a null endDate ("still running")', async () => {
+        await expect(
+          service.create(dto({ startDate: '2026-07-10' }), 'user-1'),
+        ).resolves.toBeDefined();
+      });
+    });
   });
 
   describe('update', () => {
@@ -147,6 +168,31 @@ describe('PaidCampaignService', () => {
     it('validates a newly-set contentId picker', async () => {
       await service.update('campaign-1', { contentId: 'content-2' }, 'user-1');
       expect(content.findOne).toHaveBeenCalledWith('content-2');
+    });
+
+    describe('BUG-7A-01: partial update checks the EFFECTIVE date range', () => {
+      it('rejects a new endDate that falls before the EXISTING startDate (2026-07-01)', async () => {
+        await expect(
+          service.update('campaign-1', { endDate: '2026-06-01' }, 'user-1'),
+        ).rejects.toThrow(BadRequestException);
+        expect(prisma.adCampaign.update).not.toHaveBeenCalled();
+      });
+
+      it('rejects a new startDate that falls after the EXISTING endDate', async () => {
+        prisma.adCampaign.findUnique.mockResolvedValueOnce(
+          buildCampaign({ startDate: new Date('2026-07-01'), endDate: new Date('2026-07-10') }),
+        );
+        await expect(
+          service.update('campaign-1', { startDate: '2026-07-20' }, 'user-1'),
+        ).rejects.toThrow(BadRequestException);
+        expect(prisma.adCampaign.update).not.toHaveBeenCalled();
+      });
+
+      it('accepts a new endDate that is still after the existing startDate', async () => {
+        await expect(
+          service.update('campaign-1', { endDate: '2026-08-01' }, 'user-1'),
+        ).resolves.toBeDefined();
+      });
     });
   });
 
