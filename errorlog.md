@@ -330,3 +330,17 @@ Re-verify ทั้ง 12 เงื่อนไขจาก 7.0 gate กับ�
 `docs/phase7d-live-integration-spec.md` (Meta Marketing/Insights API, `ads_read` scope reopen Meta App Review, field mapping กับ schema จริง) + `PaidLiveAdapter` rejecting stub mirror pattern Commerce's 6D เป๊ะ (throw + audit `paid_adapter_unavailable`, zero network I/O). ตัดสินใจดี: ใช้ env flag `PAID_IMPL_META=disabled|meta` แทน `mock|live` เดิม เพราะ Paid ไม่มี mock data-pull จริง (`disabled` ตรงกับความจริงมากกว่า). Stub ไม่ได้ wire เข้า `PaidModule` เพราะไม่มี consumer/endpoint ใดเรียกใช้เลย (ไม่มีปุ่ม "sync now" ใน UI ที่ ship). Verify เอง: อ่าน stub code ตรง, เช็ค `assert-adapter-flags-safe.ts` ครอบคลุม flag ใหม่จริง, grep ไม่มี live HTTP call จริง (เจอแค่ comment), **719/719 tests**, rebuild docker boot สะอาด.
 
 **Phase 7 (7.0→7D) ปิดสมบูรณ์ทั้งหมด**.
+
+## Pre-production security review — 2026-08-01
+
+Full-system STRIDE/OWASP pass ครอบคลุม Phase 1-7 ทั้งหมด (ไม่ใช่แค่ phase ล่าสุด) ก่อนขึ้น UAT/production. **READY FOR UAT WITH CONDITIONS** — 0 Critical, 1 High, 3 Medium, 3 Low, 3 Informational, **finding ใหม่ทั้งหมด ไม่เคยถูก flag ในทุก phase gate ก่อนหน้า**:
+
+- **H-1**: Next.js 14.2.35 มี 6 CVE ระดับ High รวม pre-authentication request smuggling/SSRF/DoS — ยืนยัน `npm audit` เองตรงกัน. **แก้ค้าง** (ต้อง upgrade major version, user ขอ hold ไว้ก่อน)
+- **M-1**: `ConnectedAccountsController` ตัวเดียวจาก 16 controller ที่ไม่มี `AdminGuard` (มีแค่ `SessionAuthGuard` ต่อ method) — เจอจาก full decorator sweep ทุก controller ยืนยันอ่านไฟล์เองตรงกัน. **แก้แล้ว** — ย้ายเป็น class-level `@UseGuards(SessionAuthGuard, AdminGuard)` mirror `content.controller.ts` pattern
+- **M-2**: ไม่มี security header เลยทั้งระบบ (CSP, X-Frame-Options, HSTS). **แก้แล้ว** — เพิ่ม `headers()` ใน `next.config.mjs` (X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy, HSTS ไม่มี preload). CSP เต็มรูปแบบ defer (ใหญ่กว่า, ต้องคิด inline script/hydration ของ App Router)
+- **M-3**: backend production dependency (`@nestjs/platform-express`→`multer`/`express`) มี DoS advisory จริง อยู่ใต้ upload path ที่ตรวจสอบแล้วว่าแข็งแรง. **แก้ค้าง** (dependency upgrade, hold ไว้ก่อนตาม M-3/H-1)
+- ปิดข้อที่เคย flag ว่า open: `auth.login.failure` PII retention — ยืนยันว่า implement + ทำงานจริงแล้ว ไม่ใช่ open question อีกต่อไป
+
+M-1+M-2 แก้แล้ว verify ครบ: 719/719 backend test, frontend lint/tsc/build สะอาด, rebuild docker ทั้งคู่, curl ยืนยัน headers ปรากฏจริง 4 ตัวบน live response, `ConnectedAccountsController` 401 ไม่มี session จริง, CSRF guard ยังทำงานปกติไม่มี regression.
+
+**ค้างก่อนขึ้น production จริง**: H-1 (Next.js upgrade), M-3 (backend dependency upgrade) — ทั้งคู่ user ขอ hold ไว้ก่อนโดยตั้งใจ ไม่ใช่ตกหล่น.
