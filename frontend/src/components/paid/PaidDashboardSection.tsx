@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import type { JSX } from 'react';
 import Link from 'next/link';
 import { apiClient, ApiError, type AdCampaign, type PaidCurrencyTotal, type PaidSummary } from '@/lib/api-client';
 import { countActiveCampaigns, isPaidSummaryEmpty } from '@/lib/paid-logic';

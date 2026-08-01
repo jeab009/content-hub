@@ -1,5 +1,7 @@
 'use client';
 
+import type { JSX } from 'react';
+
 import type { RankingFactor, RankingReasoning } from '@/lib/api-client';
 import { labels } from '@/lib/content-labels';
 import {

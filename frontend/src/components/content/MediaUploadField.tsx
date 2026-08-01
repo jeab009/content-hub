@@ -1,6 +1,7 @@
 'use client';
 
 import { useId, useState } from 'react';
+import type { JSX } from 'react';
 import { apiClient, ApiError } from '@/lib/api-client';
 
 interface MediaUploadFieldProps {

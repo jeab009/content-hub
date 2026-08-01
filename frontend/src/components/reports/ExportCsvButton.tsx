@@ -1,5 +1,7 @@
 'use client';
 
+import type { JSX } from 'react';
+
 import { apiClient, type ReportName, type ReportQuery } from '@/lib/api-client';
 
 interface ExportCsvButtonProps {

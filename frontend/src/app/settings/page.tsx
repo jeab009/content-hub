@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useState } from 'react';
+import type { JSX } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient, ApiError, ConnectedAccount, CurrentUser } from '@/lib/api-client';
 import { AppHeader } from '@/components/AppHeader';

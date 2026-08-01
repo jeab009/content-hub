@@ -1,5 +1,7 @@
 'use client';
 
+import type { JSX } from 'react';
+
 import type { TrendPoint } from '@/lib/api-client';
 import { formatTHB } from '@/lib/content-labels';
 import {

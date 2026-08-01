@@ -1,5 +1,7 @@
 'use client';
 
+import type { JSX } from 'react';
+
 /** Shared modal chrome for the commerce pages — mirrors ActionModalShell (posts page). */
 export function ModalShell(props: {
   titleId: string;

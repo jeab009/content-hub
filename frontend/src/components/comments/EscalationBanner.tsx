@@ -1,5 +1,7 @@
 'use client';
 
+import type { JSX } from 'react';
+
 import type { EscalationAlert } from '@/lib/api-client';
 
 interface EscalationBannerProps {

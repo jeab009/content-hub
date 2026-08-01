@@ -1,5 +1,7 @@
 'use client';
 
+import type { JSX } from 'react';
+
 import type { CopyrightClearance } from '@/lib/api-client';
 import { COPYRIGHT_CLEARANCES, labels } from '@/lib/content-labels';
 import { readyBlockers, type CopyrightGateState } from '@/lib/copyright-gate';

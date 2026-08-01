@@ -1,5 +1,7 @@
 'use client';
 
+import type { JSX } from 'react';
+
 import Link from 'next/link';
 
 export type CommerceTab = 'products' | 'placements' | 'conversions';

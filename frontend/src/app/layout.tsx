@@ -1,3 +1,5 @@
+import type { JSX } from 'react';
+
 import type { Metadata } from 'next';
 import 'bootstrap/dist/css/bootstrap.min.css';
 

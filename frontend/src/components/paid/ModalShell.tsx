@@ -1,5 +1,7 @@
 'use client';
 
+import type { JSX } from 'react';
+
 /**
  * Shared modal chrome for the paid pages — a deliberate DUPLICATE of
  * `components/commerce/ModalShell.tsx` (ADR-7.6, same reasoning as

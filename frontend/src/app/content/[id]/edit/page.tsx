@@ -1,5 +1,7 @@
 'use client';
 
+import type { JSX } from 'react';
+
 import { ContentEditor } from '@/components/content/ContentEditor';
 
 interface EditContentPageProps {

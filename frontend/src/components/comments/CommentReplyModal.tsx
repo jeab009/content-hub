@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
+import type { JSX } from 'react';
 import {
   apiClient,
   ApiError,
