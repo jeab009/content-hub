@@ -314,3 +314,9 @@ Docker rebuilt, backend boots clean ("Nest application successfully started"). `
 **7A (Backend CRUD)**: `/api/paid/*` + `/api/reports/paid.csv` ครบ. ปิดเงื่อนไข System Analyst ที่เหลือ (idempotency 60s, correction same-campaign validation). QC APPROVED zero findings. **QA REJECTED** 1 bug จริง (BUG-7A-01): `endDate < startDate` คืน raw 500 แทน 400 (DB CHECK กันข้อมูลเสียได้แต่ API contract พัง) — reproduce เองยืนยันตรงตามรายงานทุกจุด (error code, stack trace) แก้เอง เพิ่ม `assertValidDateRange()` ทั้ง create/update (update ต้องเช็ค effective range จาก partial update). **709/709 tests**, curl-verified บน live stack หลัง rebuild docker.
 
 **Phase 7A ปิดสมบูรณ์**: 2 table ใหม่, 8 endpoint, 92 test ใหม่ (617→709), zero open bug. ต่อไป: 7B (frontend).
+
+## Phase 7B (Paid frontend) — 2026-08-01
+
+`/paid` route + performance-entry modal + triple-separation dashboard section (`bg-warning-subtle` ต่างจาก commerce's `bg-body-tertiary` ชัดเจน). Orchestrator ขับ browser เอง 375/768/1280px ยืนยันตรงตามที่ developer อ้าง, ไม่มี whole-page horizontal scroll จริง (`document.body.scrollWidth` ≈ `window.innerWidth`). QC APPROVED zero findings. **QA REJECTED** เจอ BUG-7B-01: `periodEnd < periodStart` บน performance entry คืน raw 500 — **defect class เดียวกับ BUG-7A-01 เป๊ะ แค่ reintroduce คนละไฟล์** (`paid-performance.service.ts` แทน `paid-campaign.service.ts`, guard เดิมไม่ได้ extend มาที่ sibling field pair) reproduce เองยืนยันตรงทุกจุด (error code, stack trace) แก้เอง เพิ่ม `assertValidPeriodRange()` mirror pattern เดิม. **711/711 tests**, curl-verified บน live stack.
+
+**Phase 7A+7B ปิดสมบูรณ์**: 2 bug จริงพบจาก QA ทั้งคู่เป็น defect class เดียวกัน (missing server-side guard, client-only validation ไม่พอ) — บทเรียน: เวลา fix ไฟล์หนึ่งต้องเช็ค sibling service ที่มี field-shape เหมือนกันด้วยเสมอ. ต่อไป: 7C.4 (System Analyst final re-verify กับโค้ดจริง) + 7D (non-blocking live-sync spec tail).
