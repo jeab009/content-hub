@@ -304,3 +304,13 @@ Docker rebuilt, backend boots clean ("Nest application successfully started"). `
 - Phase 2 + Phase 3 (dashboard) เสร็จ + verified. **ยังไม่ build**: comment aggregation (Phase 4), TikTok/LINE (Phase 5) — no tests exist yet
 - Full mock-publish success path ยังไม่เคยเห็น posted จริงผ่าน UI (token stale, P2F-OBS-2) — unit test cover แล้ว; metric api-sync happy path verified แล้วหลัง re-encrypt token (P3-OBS-1)
 - Cron auto-sync + KPI alert ยังไม่ทำ (defer, ดู makedown §9.7)
+
+## Phase 7.0 + 7A (Paid/Ads Visibility backend) — 2026-07-31..08-01
+
+**Phase 7 kickoff**: revisit ของ Ads/Paid Module (deferred ตั้งแต่ 2026-07-16 เป็น B-lite) ตาม trigger ใหม่ (Meta Ads AI Connectors MCP open beta). พบ tension จริงกับ decision เดิม (8-week evidence window เริ่ม 2026-07-20 ยังไม่ครบ) — user confirm proceed เฉพาะ manual-entry visibility slice เท่านั้น (ไม่แตะ MCP/live API) บันทึกใน `bussiness_rule.md`.
+
+**7.0 (Schema & Separation Gate)**: `AdCampaign`/`AdPerformanceEntry` สอง table ใหม่, three-way separation (payout/commerce/paid) ขยายจาก mechanism เดิมของ Commerce ทั้ง 5 layer. System Analyst sign-off เจอ 2 defect จริงใน design draft ก่อน build: (1) `sourceRef` regex มี space หลุด — reproduce บั๊กเดียวกับที่ Commerce เคยแก้ไปแล้ว (SA-1), (2) ไม่มี retention/erasure policy เลย — เหมือน gap ที่ Commerce เคยเจอ (SA-A). ทั้งคู่แก้ก่อน build จริง. ระหว่าง build เจอ auto-generated migration พยายาม DROP FK จริง 14+18 ตัวของ Commerce tables (false-positive จาก Prisma diff engine ที่มองไม่เห็น hand-written SQL FK) — จับได้ก่อน apply และหลัง apply กลางทาง แก้ทัน. **617/617 tests**.
+
+**7A (Backend CRUD)**: `/api/paid/*` + `/api/reports/paid.csv` ครบ. ปิดเงื่อนไข System Analyst ที่เหลือ (idempotency 60s, correction same-campaign validation). QC APPROVED zero findings. **QA REJECTED** 1 bug จริง (BUG-7A-01): `endDate < startDate` คืน raw 500 แทน 400 (DB CHECK กันข้อมูลเสียได้แต่ API contract พัง) — reproduce เองยืนยันตรงตามรายงานทุกจุด (error code, stack trace) แก้เอง เพิ่ม `assertValidDateRange()` ทั้ง create/update (update ต้องเช็ค effective range จาก partial update). **709/709 tests**, curl-verified บน live stack หลัง rebuild docker.
+
+**Phase 7A ปิดสมบูรณ์**: 2 table ใหม่, 8 endpoint, 92 test ใหม่ (617→709), zero open bug. ต่อไป: 7B (frontend).
