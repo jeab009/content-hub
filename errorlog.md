@@ -344,3 +344,19 @@ Full-system STRIDE/OWASP pass ครอบคลุม Phase 1-7 ทั้งห
 M-1+M-2 แก้แล้ว verify ครบ: 719/719 backend test, frontend lint/tsc/build สะอาด, rebuild docker ทั้งคู่, curl ยืนยัน headers ปรากฏจริง 4 ตัวบน live response, `ConnectedAccountsController` 401 ไม่มี session จริง, CSRF guard ยังทำงานปกติไม่มี regression.
 
 **ค้างก่อนขึ้น production จริง**: H-1 (Next.js upgrade), M-3 (backend dependency upgrade) — ทั้งคู่ user ขอ hold ไว้ก่อนโดยตั้งใจ ไม่ใช่ตกหล่น.
+
+## Dependency upgrade plan (H-1/M-3) — 2026-08-01
+
+เขียนแผนก่อนลงมือจริง (`docs/dependency-upgrade-plan-h1-m3.md`) — parse raw `npm audit --json` เอง (ไม่เชื่อ summary) พบว่า CVE ทั้ง 6 ตัวของ H-1 จริงๆ ปิดครบตั้งแต่ Next.js 15.5.21 ไม่ต้องข้ามไป 16 ตามที่ npm audit เสนอ (มันเลือกเวอร์ชันล่าสุดที่มี ไม่ใช่ต่ำสุดที่แก้ได้). M-3 พบว่าใหญ่กว่าที่คิด — ต้อง NestJS v10→v11 ยกชุดทั้ง framework ไม่ใช่แค่ patch multer.
+
+## Frontend track (H-1) execution — 2026-08-01
+
+User สั่ง "start the frontend track" — ทำเองตรงๆ (ไม่ dispatch subagent เพราะ scope ชัดเจนจากแผนที่เขียนเอง):
+
+- **Bump React 18→19 + Next 14.2.35→15.5.22 พร้อมกัน**: แผนเดิมสมมติแยก React ก่อนได้ แต่พบจริงว่า Next 14 ปฏิเสธ React 19 (`npm ci` ERESOLVE จริง, peer dep บังคับ `^18.2.0`) — ต้อง bump คู่กันครั้งเดียว เป็นการแก้แผนตามข้อเท็จจริงที่เจอหน้างาน ไม่ใช่ตามแผนเป๊ะ
+- **React 19's `@types/react` เลิก global `JSX` namespace** — TS2503 ทั้ง 38 ไฟล์ แก้ด้วย `import type { JSX } from 'react';` ทุกไฟล์ (เขียน script อัตโนมัติ, mechanical fix ไม่เปลี่ยน type annotation เดิม)
+- **Next 15's async params API**: รัน official `npx @next/codemod@latest next-async-request-api .` — เจอจริง 1 ไฟล์ (`content/[id]/edit/page.tsx`, Client Component แต่ยังต้อง unwrap params ด้วย `use()` เหมือน Server Component — คนละ subtlety จากที่ TypeScript จะจับได้เพราะ interface เขียนเองไม่ตรง Next's runtime contract)
+- **Residual npm audit findings (postcss@8.4.31, sharp@0.34.5)**: ยืนยันว่า bundled อยู่ใน Next เองตรงๆ (ไม่ใช่สิ่งที่เรา control ผ่าน package.json) และ **แม้ Next 16.2.12 ล่าสุดก็ยัง bundle เวอร์ชันเดียวกัน** (เช็คด้วย `npm view`) — ไม่ใช่สิ่งที่แก้ได้ด้วยการอัพเกรดฝั่งเรา ต้องรอ Next.js patch. sharp ไม่ถูกเรียกใช้เลย (ไม่มี `next/image` ในโค้ด) ความเสี่ยงจริงต่ำมาก. **Accepted risk, ไม่ block**
+- Verify ครบ: tsc/lint/test(169/169)/build สะอาดทุกจุด, rebuild docker, curl ยืนยัน M-2 headers ยังอยู่ครบ, ขับ browser จริง 375/768/1280px รวมทั้ง 2 dynamic route ที่แก้ (ทำงานถูกต้องสมบูรณ์), ทดสอบ modal interaction จริง, console สะอาดทุกหน้า, ไม่มี whole-page horizontal scroll
+
+**H-1 ปิดสมบูรณ์** — `npm audit` เหลือ 4 high (postcss/sharp bundled-in-Next ×2 + 1 next transitive + brace-expansion dev-only), ไม่มีตัวไหนอยู่ใน 6 CVE เดิมของ H-1 แล้ว. **M-3 (backend NestJS v10→v11) ยังไม่เริ่ม** ตามที่ user ขอเฉพาะ frontend track ก่อน.
