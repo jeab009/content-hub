@@ -118,7 +118,18 @@ export type AuditAction =
   | 'ad_campaign_updated'
   | 'ad_campaign_retired'
   | 'ad_performance_entry_added'
-  | 'paid_report_exported';
+  | 'paid_report_exported'
+  // 7D.2 — a live paid adapter method was invoked. The Meta live path is a
+  // rejecting stub (no `ads_read` scope granted on this system's Meta App —
+  // docs/meta-app-review-status.md; no HTTP client exists —
+  // docs/phase7d-live-integration-spec.md), mirroring
+  // `commerce_adapter_unavailable`'s shape exactly: WBS 7D.2's acceptance
+  // criterion is "enabling live without credentials fails cleanly and is
+  // audited" — this is that audit trail. `actor` is
+  // `'system:paid-adapter'`, mirroring the existing
+  // `'system:commerce-adapter'` convention for a failure with no
+  // request-scoped user.
+  | 'paid_adapter_unavailable';
 
 export type AuditResult = 'success' | 'failure';
 

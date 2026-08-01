@@ -76,6 +76,18 @@ export const envValidationSchema = Joi.object({
   COMMERCE_IMPL_SHOPEE: Joi.string().valid('mock', 'shopee').default('mock'),
   COMMERCE_IMPL_TIKTOK_SHOP: Joi.string().valid('mock', 'tiktok_shop').default('mock'),
 
+  // Phase 7D — paid live-sync flag (docs/phase7d-live-integration-spec.md).
+  // Deliberately 'disabled'/'meta', NOT 'mock'/'live': unlike Commerce, Paid
+  // ships no mock adapter this phase (Paid is manual-entry-only — design
+  // §3.1, "no PaidAdapterRegistry to design"), so a value named 'mock' would
+  // imply a rehearsal data-pull path that does not exist. 'disabled' (the
+  // safe default) names the real state honestly; 'meta' selects the live
+  // Marketing/Insights API path, which requires an `ads_read` OAuth scope
+  // this system's Meta App does not have (docs/meta-app-review-status.md).
+  // Same boot-refusal contract as every other *_IMPL_* flag — see
+  // assertAdapterFlagsAreSafe in main.ts.
+  PAID_IMPL_META: Joi.string().valid('disabled', 'meta').default('disabled'),
+
   // Phase 4 sentiment classifier gate — MUST default to 'rule_based'. The
   // self-hosted model ('model') is a flagged 4C tail, shipped disabled.
   SENTIMENT_IMPL: Joi.string().valid('rule_based', 'model').default('rule_based'),

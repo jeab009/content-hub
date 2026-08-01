@@ -16,37 +16,48 @@ import { AppConfig } from './configuration';
  * parallel one for commerce — two refusal policies could drift; one cannot.
  * Renamed from assertPublisherFlagsAreSafe accordingly.
  *
+ * Phase 7D extends this a third time for `PAID_IMPL_META`
+ * (docs/phase7d-live-integration-spec.md). Its safe/default value is spelled
+ * `'disabled'`, not `'mock'` (Paid has no mock data-pull to gate between —
+ * see env.validation.ts), so the flags below are grouped by "resolved to its
+ * safe default" vs. "resolved to a live/non-default value" rather than by
+ * literal string equality with `'mock'`, and the messages say "non-default"
+ * accordingly.
+ *
  * Lives in its own file (not inline in main.ts) so it is unit-testable
  * without importing main.ts, whose module-level `bootstrap()` call would
  * otherwise fire on import.
  */
 export function assertAdapterFlagsAreSafe(appConfig: AppConfig): void {
-  const nonMockFlags = [
+  const nonDefaultFlags = [
     appConfig.publisher.facebookImpl !== 'mock' ? 'PUBLISHER_IMPL_FACEBOOK' : null,
     appConfig.publisher.youtubeImpl !== 'mock' ? 'PUBLISHER_IMPL_YOUTUBE' : null,
     appConfig.publisher.tiktokImpl !== 'mock' ? 'PUBLISHER_IMPL_TIKTOK' : null,
     appConfig.publisher.lineImpl !== 'mock' ? 'PUBLISHER_IMPL_LINE' : null,
     appConfig.commerce.shopeeImpl !== 'mock' ? 'COMMERCE_IMPL_SHOPEE' : null,
     appConfig.commerce.tiktokShopImpl !== 'mock' ? 'COMMERCE_IMPL_TIKTOK_SHOP' : null,
+    appConfig.paid.metaImpl !== 'disabled' ? 'PAID_IMPL_META' : null,
   ].filter((flag): flag is string => flag !== null);
 
-  if (nonMockFlags.length === 0) {
+  if (nonDefaultFlags.length === 0) {
     return;
   }
 
   if (appConfig.nodeEnv !== 'production') {
     throw new Error(
-      `Refusing to boot: ${nonMockFlags.join(', ')} resolved to a real (non-mock) adapter ` +
+      `Refusing to boot: ${nonDefaultFlags.join(', ')} resolved to a real (non-default) adapter ` +
         `implementation while NODE_ENV="${appConfig.nodeEnv}" (not "production"). Real platform/` +
-        'commerce adapters must only run in production. Set the flag(s) back to "mock" for ' +
+        'commerce/paid adapters must only run in production. Set the flag(s) back to their safe ' +
+        'default ("mock" for PUBLISHER_IMPL_*/COMMERCE_IMPL_*, "disabled" for PAID_IMPL_META) for ' +
         'local/dev/CI use.',
     );
   }
 
   // eslint-disable-next-line no-console
   console.warn(
-    `WARNING: ${nonMockFlags.join(', ')} resolved to a real (non-mock) adapter implementation in ` +
-      'production. Confirm this is intentional — commerce flags currently have no HTTP client ' +
-      'behind them and will fail closed regardless (Decision 5).',
+    `WARNING: ${nonDefaultFlags.join(', ')} resolved to a real (non-default) adapter ` +
+      'implementation in production. Confirm this is intentional — commerce and paid flags ' +
+      'currently have no HTTP client behind them and will fail closed regardless (Decision 5 / ' +
+      'docs/phase7d-live-integration-spec.md).',
   );
 }

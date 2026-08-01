@@ -69,6 +69,14 @@ export interface AppConfig {
     shopeeImpl: 'mock' | 'shopee';
     tiktokShopImpl: 'mock' | 'tiktok_shop';
   };
+  paid: {
+    // See env.validation.ts PAID_IMPL_META. 'disabled' (default, safe) vs
+    // 'meta' (live — gated by assertAdapterFlagsAreSafe outside production,
+    // same contract as every other *_IMPL_* flag). No 'mock' value: Paid has
+    // no mock data-pull to select between this phase (manual entry only —
+    // docs/phase7d-live-integration-spec.md).
+    metaImpl: 'disabled' | 'meta';
+  };
   sentiment: {
     // 'rule_based' (default, offline, deterministic) | 'model' (self-hosted, flagged).
     // Mirrors the PUBLISHER_IMPL_* mock/live gate. CI + demo never set it, so the
@@ -162,6 +170,9 @@ export default (): { app: AppConfig } => ({
     commerce: {
       shopeeImpl: (process.env.COMMERCE_IMPL_SHOPEE ?? 'mock') as 'mock' | 'shopee',
       tiktokShopImpl: (process.env.COMMERCE_IMPL_TIKTOK_SHOP ?? 'mock') as 'mock' | 'tiktok_shop',
+    },
+    paid: {
+      metaImpl: (process.env.PAID_IMPL_META ?? 'disabled') as 'disabled' | 'meta',
     },
     sentiment: {
       // MUST default to 'rule_based' — the self-hosted model (4C) is a flagged
