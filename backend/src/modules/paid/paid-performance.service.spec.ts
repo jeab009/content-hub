@@ -148,6 +148,29 @@ describe('PaidPerformanceService', () => {
       });
     });
 
+    describe('BUG-7B-01: periodEnd before periodStart rejects with a clean 400, not a raw DB error', () => {
+      it('rejects periodEnd before periodStart', async () => {
+        await expect(
+          service.addEntry(
+            'campaign-1',
+            dto({ periodStart: '2026-07-10', periodEnd: '2026-07-01' }),
+            'user-1',
+          ),
+        ).rejects.toThrow(BadRequestException);
+        expect(prisma.adPerformanceEntry.create).not.toHaveBeenCalled();
+      });
+
+      it('accepts periodEnd equal to periodStart', async () => {
+        await expect(
+          service.addEntry(
+            'campaign-1',
+            dto({ periodStart: '2026-07-10', periodEnd: '2026-07-10' }),
+            'user-1',
+          ),
+        ).resolves.toBeDefined();
+      });
+    });
+
     describe('idempotency window (§4.2 finding, condition 9)', () => {
       it('rejects a byte-identical payload from the same recordedBy within the window with 409', async () => {
         prisma.adPerformanceEntry.findFirst.mockResolvedValueOnce({ id: 'earlier-entry' });

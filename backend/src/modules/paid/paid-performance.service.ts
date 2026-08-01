@@ -46,14 +46,24 @@ export class PaidPerformanceService {
     assertPaidSourceRefShape(dto.sourceRef);
     const currency = assertPaidSupportedCurrency(dto.currency ?? PAID_DEFAULT_CURRENCY);
 
+    const periodStart = new Date(dto.periodStart);
+    const periodEnd = new Date(dto.periodEnd);
+    // BUG-7B-01: the exact same missing-guard shape as BUG-7A-01
+    // (paid-campaign.service.ts's assertValidDateRange), reintroduced on this
+    // sibling field pair — the DB CHECK (ad_performance_entries_period_chk)
+    // already stops the bad row, but without this the client-only gate
+    // (canSubmitPerformanceEntry in paid-logic.ts) was the only thing
+    // preventing an opaque 500 on any direct API call.
+    this.assertValidPeriodRange(periodStart, periodEnd);
+
     await this.assertNotDuplicateWithinWindow(campaignId, dto, userId, currency);
     await this.assertCorrectionTargetIsSameCampaign(campaignId, dto.correctsEntryId);
 
     const entry = await this.prisma.adPerformanceEntry.create({
       data: {
         campaignId,
-        periodStart: new Date(dto.periodStart),
-        periodEnd: new Date(dto.periodEnd),
+        periodStart,
+        periodEnd,
         spend: new Prisma.Decimal(dto.spend),
         reach: dto.reach ?? null,
         impressions: dto.impressions ?? null,
@@ -111,6 +121,22 @@ export class PaidPerformanceService {
       },
       orderBy: { periodStart: 'asc' },
     });
+  }
+
+  /**
+   * BUG-7B-01: reject `periodEnd < periodStart` with a clean 400 before it
+   * ever reaches the DB CHECK (`ad_performance_entries_period_chk`) — mirrors
+   * `PaidCampaignService.assertValidDateRange` exactly (same defect class,
+   * same fix shape), except both boundaries are always required here (unlike
+   * a campaign's optional `endDate`), so equality is the only permitted edge.
+   */
+  private assertValidPeriodRange(periodStart: Date, periodEnd: Date): void {
+    if (periodEnd < periodStart) {
+      throw new BadRequestException(
+        `periodEnd (${periodEnd.toISOString().slice(0, 10)}) must not be before periodStart ` +
+          `(${periodStart.toISOString().slice(0, 10)}).`,
+      );
+    }
   }
 
   /**
