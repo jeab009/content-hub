@@ -207,12 +207,11 @@ scope ที่ระบบขอ (ตั้งไว้แล้ว ไม่�
 - [ ] ตั้ง backup อัตโนมัติของ Postgres
 - [ ] **ทดสอบ restore จริง** อย่างน้อย 1 ครั้ง (backup ที่ restore ไม่ได้ = ไม่มี backup)
 
-### 5.4 CI
+### 5.4 CI — ✅ ทำแล้ว (2026-08-02)
 
-- [ ] สร้าง git remote (GitHub) แล้ว push
+- [x] สร้าง git remote (GitHub) แล้ว push — [`jeab009/content-hub`](https://github.com/jeab009/content-hub)
 
-> `.github/workflows/ci.yml` เขียนไว้เรียบร้อย spin up Postgres + Redis จริง รัน lint/typecheck/test/build ทั้งสอง app
-> แต่ **ไม่เคยรันบน GitHub Actions จริงสักครั้ง** เพราะยังไม่มี remote
+> `.github/workflows/ci.yml` รันจริงบน GitHub Actions แล้ว (PR #1) — ทั้ง 4 job ผ่าน (`review-authorship`, `backend`, `separation-e2e`, `frontend`) ดู §8 สำหรับ branch protection ที่ผูกกับ job พวกนี้
 
 ### 5.5 Monitoring
 
