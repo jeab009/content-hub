@@ -371,3 +371,15 @@ User สั่ง "start the backend track" — ทำเองตรงตา�
 - Verify ครบ: tsc/lint สะอาด, unit 719/719 (รวม `admin.guard.spec.ts` ยืนยัน M-1 fix รอดหลัง framework bump), e2e 28/28 (byte-identity separation ยัง hold), rebuild docker boot สำเร็จครบทุก route (รวม `ConnectedAccountsController` M-1 fix routes), **ทดสอบ `assertAdapterFlagsAreSafe()` boot guard จริง** (รัน container แยกตั้ง `COMMERCE_IMPL_SHOPEE=shopee` นอก production → refuse boot จริงตามที่ควร, รวม `PAID_IMPL_META` ที่เพิ่มใน Phase 7D ด้วย), curl smoke ทุก module (contents/posts/dashboard/comments/commerce/paid/scheduler/connected-accounts) → 200 ครบหมด
 
 **M-3 ปิดสมบูรณ์ — H-1 + M-3 ทั้งคู่ปิดแล้ว**. Pre-production security review's dependency findings (H-1/M-1/M-2/M-3) ปิดครบทุกข้อ.
+
+## Pre-production security review #2 (fresh re-run) — 2026-08-02
+
+User ขอ re-run เต็มรูปแบบเพื่อ confirm READY FOR UAT — ไม่ใช่แค่ diff review 4 fix เดิม แต่ full STRIDE/OWASP pass ใหม่ทั้งหมด (เหตุผล: dependency bump ใหญ่ 2 ตัว NestJS v11 + Next 15/React 19 อาจสร้างปัญหาใหม่ที่ diff review จับไม่ได้).
+
+**4 finding เดิมยืนยันปิดจริงด้วย fresh evidence ทั้งหมด** — รวม M-2 verify แบบ live `curl -I` กับ container จริง (ไม่ใช่แค่อ่าน config), M-3 verify `npm audit --omit=dev` = 0/0/0/0 จริง.
+
+**พบ M-4 ใหม่จริง — ครั้งที่ 3 ของ defect class เดียวกัน** (`CommerceConversionService.create()` ไม่มี `periodEnd>=periodStart` guard) — Phase 7C.4's sweep พลาดเพราะ scope แค่ CHECK constraint ใน Phase 7 migration เท่านั้น ไม่ได้ครอบคลุม constraint เดียวกันใน Phase 6 Commerce migration. Live-reproduce จริงจาก agent (raw 500, Postgres 23514) — reproduce เองยืนยันตรงทุกจุด แก้ทันทีด้วย pattern เดียวกับ 2 ครั้งก่อน (`assertValidPeriodRange`). **721/721 tests**, curl-verified.
+
+Agent เสนอ fast-follow: shared validation helper แทนการ copy-paste guard เดิมซ้ำเป็นครั้งที่ 4 — ยังไม่ทำ (optional, รอ user ตัดสินใจ)
+
+**สถานะล่าสุด: H-1 + M-1 + M-2 + M-3 + M-4 ปิดครบหมด. READY FOR UAT (เหลือแค่ Low/Informational items ที่ track เป็น production checklist ไม่ block).**
