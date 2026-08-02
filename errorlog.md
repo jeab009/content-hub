@@ -383,3 +383,11 @@ User ขอ re-run เต็มรูปแบบเพื่อ confirm READY F
 Agent เสนอ fast-follow: shared validation helper แทนการ copy-paste guard เดิมซ้ำเป็นครั้งที่ 4 — ยังไม่ทำ (optional, รอ user ตัดสินใจ)
 
 **สถานะล่าสุด: H-1 + M-1 + M-2 + M-3 + M-4 ปิดครบหมด. READY FOR UAT (เหลือแค่ Low/Informational items ที่ track เป็น production checklist ไม่ block).**
+
+## Shared date-range guard refactor (fast-follow) — 2026-08-02
+
+User สั่งทำ shared helper ตามที่ agent เสนอ — สร้าง `backend/src/common/utils/date-range.util.ts` (`assertValidDateRange(start, end, fieldNames)`, `end` nullable รองรับ campaign's "still running" case) ให้ทั้ง 3 service (`PaidCampaignService`, `PaidPerformanceService`, `CommerceConversionService`) เรียกใช้ร่วมกันแทน private method แยก 3 ชุด. ลบ private method เดิมทั้ง 3 ตัวออก.
+
+Verify ครบ: tsc/lint สะอาด, **727/727 tests** (721 + 6 test ใหม่ของ shared util), e2e 28/28, rebuild docker, curl ยืนยันทั้ง 3 endpoint ยัง reject bad range ถูกต้องเหมือนเดิม (error message format คงเดิม, field name ตรงตาม caller).
+
+**ป้องกัน defect class นี้เกิดครั้งที่ 4 ได้แล้ว** — ทุก service ที่มี date-range field pair ในอนาคตต้อง import shared function แทนที่จะ copy-paste ใหม่.
