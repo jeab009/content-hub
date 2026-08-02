@@ -5,6 +5,7 @@ import { ValidationPipe } from '@nestjs/common';
 import session from 'express-session';
 import RedisStore from 'connect-redis';
 import Redis from 'ioredis';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AppConfig } from './config/configuration';
 import { assertAdapterFlagsAreSafe } from './config/assert-adapter-flags-safe';
@@ -28,6 +29,18 @@ async function bootstrap(): Promise<void> {
     password: appConfig.redis.password,
     db: appConfig.redis.sessionDb,
   });
+
+  app.use(
+    helmet({
+      // This API is deliberately cross-origin from its frontend (separate
+      // ports/origins in every environment, session cookie carried via CORS
+      // credentials — see corsOrigin below). Helmet's default
+      // Cross-Origin-Resource-Policy is 'same-origin', which would make
+      // browsers block the frontend's own fetch() calls before they reach
+      // this server's CORS headers.
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
 
   app.use(
     session({
