@@ -318,11 +318,11 @@ Full-system STRIDE/OWASP pass รันไป 2 รอบ (ครั้งแร
 
 > ทำเป็น `PdpaRetentionModule` ใหม่ — BullMQ repeatable job (`upsertJobScheduler`, idempotent ข้าม restart) รันทุกวัน 03:15 เรียก `CommentRetentionService.purgeExpired` + `AuditRetentionService.anonymizeExpiredActors` ตรงๆ (function เดียวกับที่ endpoint เรียก ไม่ใช่ copy) ผ่าน actor `system:pdpa-retention-job`. Verify แล้วด้วย: 738/738 test ผ่าน, docker rebuild boot สะอาด, เช็ค Redis จริงผ่าน `queue.getJobSchedulers()` เห็น next run ตรง `2026-08-02T03:15:00.000Z`, trigger job manual บน container จริงแล้วเห็น log ประมวลผลสำเร็จ
 
-### 7.3 พิจารณา global `APP_GUARD` (L-3, defense-in-depth, ไม่บังคับ)
+### 7.3 global `APP_GUARD` (L-3, defense-in-depth) — ✅ ทำแล้ว (2026-08-02)
 
-- [ ] ทางเลือก: ใส่ `SessionAuthGuard` เป็น default ทั้งระบบผ่าน `APP_GUARD` provider แล้วเปิดเฉพาะ route สาธารณะ (เช่น login) ด้วย `@Public()` decorator แทนที่จะพึ่งทุก controller ประกาศ guard เอง
+- [x] ใส่ `SessionAuthGuard` เป็น default ทั้งระบบผ่าน `APP_GUARD` provider (`app.module.ts`) เปิดเฉพาะ route สาธารณะด้วย `@Public()` decorator (`common/decorators/public.decorator.ts`) แทนที่จะพึ่งทุก controller ประกาศ guard เอง
 
-> ตอนนี้ sweep ทุก controller (17 ตัว) ผ่านหมดแล้ว แต่ไม่มี structural backstop ถ้า controller ใหม่ในอนาคตลืมใส่ guard — นี่คือสิ่งที่ทำให้ M-1 (ConnectedAccountsController ลืมใส่ AdminGuard) เกิดขึ้นได้ตั้งแต่แรก
+> ทุก route authenticated by default แล้ว. sweep ทั้ง 19 controller ก่อนทำ พบว่า 17 ตัว guard ครบอยู่แล้ว (ไม่มีผลกระทบ) เหลือ 2 จุดที่ต้อง mark `@Public()` จริง: `HealthController` (ทั้งตัว) กับ `POST /auth/login`. Verify แล้วด้วย 738 unit + 28 e2e test + live curl บน container จริง (`/api/health` 200, `/api/dashboard/overview` ไม่มี session → 401, login ด้วย credential ผิดยังเข้าถึง handler ได้ 401 ไม่ใช่โดน guard บล็อกก่อน, route ที่ไม่มีจริง 404 ปกติ, login สำเร็จ + cookie แล้วยิง protected route ได้ 200). ป้องกัน M-1 gap class เกิดซ้ำได้แล้ว — controller ใหม่ในอนาคตต้อง `@Public()` เองถ้าต้องการเปิด ไม่ใช่ลืมใส่ guard แล้วหลุด
 
 ### 7.4 Re-run `npm audit` ก่อน production build ทุกครั้ง
 

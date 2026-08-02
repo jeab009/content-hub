@@ -413,3 +413,13 @@ Verify ครบ: **733/733 tests** (727+6 ใหม่), rebuild docker, **live
 Verify ครบ: tsc/lint สะอาด, **738/738 tests** (733+5 ใหม่: 4 processor spec + 1 scheduler spec), rebuild docker boot สะอาด (log ยืนยัน `Registered repeatable job: PDPA retention sweep (daily, 03:15)`), **เช็ค Redis จริงผ่าน `queue.getJobSchedulers()` ในคอนเทนเนอร์ที่รันอยู่** เห็น scheduler ลงทะเบียนจริง (`pattern: "15 3 * * *"`, `next: 1785640500000` แปลงตรง `2026-08-02T03:15:00.000Z`), **trigger job manual จริง** (`queue.add()`) แล้วเห็น processor log ประมวลผลสำเร็จ (`purged 0 expired comment(s), anonymized 0 expired audit actor(s)` — ข้อมูล dev DB ไม่มีอะไรหมดอายุ ตรงตามคาด).
 
 **L-2 ปิดสมบูรณ์.**
+
+## global APP_GUARD (L-3, defense-in-depth) — 2026-08-02
+
+จนถึงตอนนี้ auth เป็น opt-in ต่อ controller (แต่ละตัวประกาศ `@UseGuards(SessionAuthGuard)` เอง) — นี่คือ root cause ที่ทำให้ M-1 (`ConnectedAccountsController` ลืมใส่ guard) เกิดขึ้นได้ตั้งแต่แรก. เปลี่ยนเป็น deny-by-default: register `SessionAuthGuard` เป็น `APP_GUARD` provider ใน `app.module.ts`, เพิ่ม `@Public()` decorator (`SetMetadata` + `Reflector.getAllAndOverride` ใน guard) เป็นช่องเปิดที่ต้อง grep เจอชัดเจน.
+
+**Sweep scope ก่อนแก้ ไม่ใช่เดา**: grep ทั้ง 19 controller หา `@UseGuards` — 17 ตัวมี class-level guard อยู่แล้วครบ (ไม่กระทบพฤติกรรมเดิมเลย). เหลือแค่ 2 จุดที่ต้อง mark `@Public()` จริง: `HealthController` ทั้งตัว (load balancer ไม่มี session) กับ `POST /auth/login` (route ที่สร้าง session เอง จะ guard ตัวเองไม่ได้). เช็คแล้วว่าไม่มี webhook/callback route อื่นที่ต้องยกเว้นเพิ่ม — OAuth callback ของ `ConnectedAccountsController` (`facebook/callback`, `google/callback`) อาศัย browser session cookie เดิมตอน redirect กลับมา (ไม่ใช่ fetch แยก) เลย guard ได้ปกติไม่ต้องยกเว้น.
+
+Verify ครบ: tsc/lint สะอาด, **738/738 unit tests + 28/28 e2e tests** ไม่มี regression, rebuild docker boot สะอาด. **Live curl บน container จริง**: `/api/health` → `200` (public), `/api/dashboard/overview` ไม่มี session → `401`, `POST /auth/login` credential ผิดยังเข้าถึง handler ได้ (`401` จาก business logic ไม่ใช่โดน guard บล็อกก่อนถึง handler), route ที่ไม่มีจริง → `404` ปกติ (guard ไม่ false-positive กับ unmatched route), **happy path เต็ม**: login ด้วย seed admin credential จริง → ได้ session cookie → ยิง protected route ด้วย cookie นั้น → `200`.
+
+**L-3 ปิดสมบูรณ์ — SETUP-CHECKLIST §7 ทุกข้อ (7.1-7.3) ปิดหมดแล้ว เหลือแค่ 7.4 (standing reminder รัน npm audit ก่อน build) และ 7.5 (optional helmet) ที่ไม่ block production**
