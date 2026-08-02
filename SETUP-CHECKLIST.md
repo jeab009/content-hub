@@ -13,7 +13,7 @@
 ```bash
 cd /Users/uthorn.y/Desktop/Content/content-hub
 docker compose ps                    # ควรเห็น 4 service เป็น healthy
-docker compose exec backend npx prisma migrate status   # ควรขึ้น "up to date"
+docker compose exec backend npx prisma migrate status   # ควรขึ้น "up to date", 11 migrations
 ```
 
 เข้า http://localhost:3000 → login ด้วย `admin@example.com` / ค่าใน `backend/.env` (`SEED_ADMIN_PASSWORD`)
@@ -295,13 +295,54 @@ git config core.hooksPath .githooks
 
 ---
 
+## ส่วนที่ 7 — Pre-production security review (`docs/pre-production-security-review-2.md`, 2026-08-02)
+
+Full-system STRIDE/OWASP pass รันไป 2 รอบ (ครั้งแรก + fresh re-run หลังแก้). สรุปสถานะ:
+
+> ✅ **ทุก finding ระดับ Critical/High/Medium ปิดหมดแล้ว** (H-1, M-1, M-2, M-3, M-4) — verify ด้วยตัวเองทุกจุด (curl ต่อ live stack, npm audit สด, ไม่ใช่แค่เชื่อ commit) — READY FOR UAT
+> รายละเอียด fix: Next.js 14→15.5.22 + React 18→19 (H-1), `AdminGuard` บน `ConnectedAccountsController` (M-1), security headers บน frontend (M-2), NestJS v10→v11 ทั้งชุด (M-3), date-range guard ที่ `CommerceConversionService` (M-4) + shared helper ป้องกันเกิดซ้ำครั้งที่ 4
+
+**เหลือแค่ Low/Informational — ไม่ block UAT แต่ควรทำก่อนขึ้น production จริง:**
+
+### 7.1 `/api/health` HTTP endpoint (L-1, ค้างมาตั้งแต่ DEVOPS-3)
+
+- [ ] เพิ่ม `GET /api/health` (เช็ค DB + Redis connection จริง ไม่ใช่แค่ process ตอบ)
+- [ ] ต่อ load balancer / orchestrator health check เข้ากับ endpoint นี้แทนการเช็คแค่ TCP port
+
+> ตอนนี้ orchestrator เช็คได้แค่ว่า process listen อยู่ ไม่รู้ว่า DB/Redis connection ตายไปหรือยัง
+
+### 7.2 ตั้ง cron ให้ PDPA retention endpoint ทำงานอัตโนมัติ (L-2)
+
+- [ ] ตั้ง scheduled job เรียก `POST /api/comments/retention/purge` (comment 12 เดือน)
+- [ ] ตั้ง scheduled job เรียก `POST /api/audit-logs/retention/anonymize` (audit 90 วัน — ดู 6.1)
+
+> logic ทำงานถูกต้องแล้ว (verify แล้วผ่าน test จริง) แค่ยังต้องมี admin เรียกเองผ่าน API ไม่มี trigger อัตโนมัติ
+
+### 7.3 พิจารณา global `APP_GUARD` (L-3, defense-in-depth, ไม่บังคับ)
+
+- [ ] ทางเลือก: ใส่ `SessionAuthGuard` เป็น default ทั้งระบบผ่าน `APP_GUARD` provider แล้วเปิดเฉพาะ route สาธารณะ (เช่น login) ด้วย `@Public()` decorator แทนที่จะพึ่งทุก controller ประกาศ guard เอง
+
+> ตอนนี้ sweep ทุก controller (17 ตัว) ผ่านหมดแล้ว แต่ไม่มี structural backstop ถ้า controller ใหม่ในอนาคตลืมใส่ guard — นี่คือสิ่งที่ทำให้ M-1 (ConnectedAccountsController ลืมใส่ AdminGuard) เกิดขึ้นได้ตั้งแต่แรก
+
+### 7.4 Re-run `npm audit` ก่อน production build ทุกครั้ง
+
+- [ ] `npm audit --prefix frontend` และ `npm audit --prefix backend --omit=dev` ก่อน build image จริง
+
+> Next.js bundle `postcss`/`sharp` เวอร์ชันของตัวเองข้างใน — เปลี่ยนได้อิสระจาก `package.json` ของเรา ตอนนี้ accept เป็นความเสี่ยงต่ำ (ไม่ใช้ `next/image` เลย) แต่ควรเช็คซ้ำทุกครั้งก่อน build จริงเผื่อ Next.js ปล่อย patch ใหม่
+
+### 7.5 (ไม่บังคับ) พิจารณา `helmet` middleware บน backend
+
+- [ ] backend ยังไม่มี `helmet` — frontend มี security headers แล้ว (M-2) แต่ backend response header ยังเป็นค่า default ของ Express
+
+---
+
 ## ลำดับที่แนะนำ
 
 **ถ้าจะใช้ต่อในเครื่องตัวเอง (ไม่เปิดสาธารณะ):**
 → ทำแค่ ส่วนที่ 1 (secrets) + 2 (Facebook) พอ
 
 **ถ้าจะขึ้น production จริง:**
-→ 1 → 2 → 3 → 5.1 → 5.2 → 5.3 → 5.4 → 5.5 → 6
+→ 1 → 2 → 3 → 5.1 → 5.2 → 5.3 → 5.4 → 5.5 → 6 → 7 (7.4 ทำซ้ำทุกครั้งก่อน build)
 
 **ทดสอบก่อนของจริงเสมอ:**
 1. เปิด live ทีละ platform อย่าเปิดพร้อมกัน
@@ -313,9 +354,14 @@ git config core.hooksPath .githooks
 
 ## สิ่งที่ไม่ต้องทำ (ทำเสร็จแล้ว)
 
-- ✅ Database schema + migrations (9 migrations)
+- ✅ Database schema + migrations (11 migrations)
 - ✅ Ranking engine v2 (เปิดใช้แล้ว)
 - ✅ Audit trail ลง DB (รอด restart)
 - ✅ Copyright gate, PDPA controls, CSV export
-- ✅ 401 backend tests + 92 frontend tests
+- ✅ Commerce/Affiliate (Phase 6) + Paid/Ads visibility (Phase 7) — ปิดสมบูรณ์ทั้งคู่ พร้อม separation guarantee (payout/commerce/paid แยกกันจริง byte-identity proof)
+- ✅ 727 backend tests + 169 frontend tests + 59 separation tests + 28 e2e tests
 - ✅ Visual QA ครบทุกหน้า
+- ✅ Next.js 14→15.5.22 + React 18→19 (H-1 — ปิด 6 CVE ระดับ High)
+- ✅ NestJS 10→11 ทั้งชุด (M-3 — ปิด production vulnerability 12 ตัวเหลือ 0)
+- ✅ `AdminGuard` ครบทุก controller (M-1) + security headers บน frontend (M-2)
+- ✅ Pre-production security review ผ่าน 2 รอบ, ปิด finding ระดับ Critical/High/Medium ครบหมด — ดูส่วนที่ 7 สำหรับ Low/Informational ที่เหลือ
