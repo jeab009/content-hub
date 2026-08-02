@@ -359,4 +359,15 @@ User สั่ง "start the frontend track" — ทำเองตรงๆ (�
 - **Residual npm audit findings (postcss@8.4.31, sharp@0.34.5)**: ยืนยันว่า bundled อยู่ใน Next เองตรงๆ (ไม่ใช่สิ่งที่เรา control ผ่าน package.json) และ **แม้ Next 16.2.12 ล่าสุดก็ยัง bundle เวอร์ชันเดียวกัน** (เช็คด้วย `npm view`) — ไม่ใช่สิ่งที่แก้ได้ด้วยการอัพเกรดฝั่งเรา ต้องรอ Next.js patch. sharp ไม่ถูกเรียกใช้เลย (ไม่มี `next/image` ในโค้ด) ความเสี่ยงจริงต่ำมาก. **Accepted risk, ไม่ block**
 - Verify ครบ: tsc/lint/test(169/169)/build สะอาดทุกจุด, rebuild docker, curl ยืนยัน M-2 headers ยังอยู่ครบ, ขับ browser จริง 375/768/1280px รวมทั้ง 2 dynamic route ที่แก้ (ทำงานถูกต้องสมบูรณ์), ทดสอบ modal interaction จริง, console สะอาดทุกหน้า, ไม่มี whole-page horizontal scroll
 
-**H-1 ปิดสมบูรณ์** — `npm audit` เหลือ 4 high (postcss/sharp bundled-in-Next ×2 + 1 next transitive + brace-expansion dev-only), ไม่มีตัวไหนอยู่ใน 6 CVE เดิมของ H-1 แล้ว. **M-3 (backend NestJS v10→v11) ยังไม่เริ่ม** ตามที่ user ขอเฉพาะ frontend track ก่อน.
+**H-1 ปิดสมบูรณ์** — `npm audit` เหลือ 4 high (postcss/sharp bundled-in-Next ×2 + 1 next transitive + brace-expansion dev-only), ไม่มีตัวไหนอยู่ใน 6 CVE เดิมของ H-1 แล้ว.
+
+## Backend track (M-3) execution — 2026-08-02
+
+User สั่ง "start the backend track" — ทำเองตรงตามแผน §3:
+
+- **Pre-flight check ก่อนแตะ package.json**: grep `setGlobalPrefix`/`getAllAndMerge`/wildcard-route ทั้งหมด — ว่างหมดทั้ง 3 จุด (ความเสี่ยงหลักของ Express v5 ที่ NestJS v11 default ให้). tsconfig เป็น pattern มาตรฐานอยู่แล้ว ไม่ต้องแก้
+- **Bump ทั้งชุด @nestjs/* พร้อมกัน** (core/common/platform-express/testing → 11.1.28, config → 4.0.4, bullmq → 11.0.4, throttler → 6.5.0 — ตัวนี้ peer-compatible กับ core ^11 อยู่แล้วไม่ต้อง major bump, cli/schematics → v11 line) — ตรวจ peer dependency ทุกตัวก่อน install จริง ไม่มี ERESOLVE เลย (ต่างจาก frontend track)
+- **ผลลัพธ์ดีกว่าที่คาด**: `npm audit --omit=dev` เหลือ **0** vulnerability (จากเดิม 12: 9 moderate + 3 high) — M-3 ปิดสมบูรณ์ 100% ไม่เหลือ residual แบบ H-1's postcss/sharp เลย
+- Verify ครบ: tsc/lint สะอาด, unit 719/719 (รวม `admin.guard.spec.ts` ยืนยัน M-1 fix รอดหลัง framework bump), e2e 28/28 (byte-identity separation ยัง hold), rebuild docker boot สำเร็จครบทุก route (รวม `ConnectedAccountsController` M-1 fix routes), **ทดสอบ `assertAdapterFlagsAreSafe()` boot guard จริง** (รัน container แยกตั้ง `COMMERCE_IMPL_SHOPEE=shopee` นอก production → refuse boot จริงตามที่ควร, รวม `PAID_IMPL_META` ที่เพิ่มใน Phase 7D ด้วย), curl smoke ทุก module (contents/posts/dashboard/comments/commerce/paid/scheduler/connected-accounts) → 200 ครบหมด
+
+**M-3 ปิดสมบูรณ์ — H-1 + M-3 ทั้งคู่ปิดแล้ว**. Pre-production security review's dependency findings (H-1/M-1/M-2/M-3) ปิดครบทุกข้อ.
