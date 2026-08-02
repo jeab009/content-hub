@@ -5,6 +5,7 @@ import { Request } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { SessionAuthGuard } from '../../common/guards/session-auth.guard';
+import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUserId } from '../../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../../common/audit/audit-log.service';
@@ -21,6 +22,7 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @Public()
   @UseGuards(ThrottlerGuard)
   @Throttle(LOGIN_RATE_LIMIT)
   async login(

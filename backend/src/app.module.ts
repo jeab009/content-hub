@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import configuration from './config/configuration';
 import { envValidationSchema } from './config/env.validation';
+import { SessionAuthGuard } from './common/guards/session-auth.guard';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { HealthModule } from './modules/health/health.module';
 import { AuditLogModule } from './common/audit/audit-log.module';
@@ -50,6 +52,13 @@ import { PaidModule } from './modules/paid/paid.module';
     ReportsModule,
     CommerceModule,
     PaidModule,
+  ],
+  providers: [
+    // L-3 (pre-production security review, defense-in-depth): every route is
+    // authenticated by default; @Public() (health, login) is the explicit
+    // opt-out. Backstops the M-1 gap class (a controller shipped without a
+    // guard because auth was opt-in per controller).
+    { provide: APP_GUARD, useClass: SessionAuthGuard },
   ],
 })
 export class AppModule {}

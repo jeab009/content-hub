@@ -1,5 +1,6 @@
 import { Controller, Get, HttpStatus, Res } from '@nestjs/common';
 import { Response } from 'express';
+import { Public } from '../../common/decorators/public.decorator';
 import { HealthCheckResult, HealthService } from './health.service';
 
 /**
@@ -16,6 +17,7 @@ import { HealthCheckResult, HealthService } from './health.service';
  * per-check `checks` detail this endpoint exists to provide.
  */
 @Controller('api/health')
+@Public()
 export class HealthController {
   constructor(private readonly health: HealthService) {}
 
