@@ -304,12 +304,12 @@ Full-system STRIDE/OWASP pass รันไป 2 รอบ (ครั้งแร
 
 **เหลือแค่ Low/Informational — ไม่ block UAT แต่ควรทำก่อนขึ้น production จริง:**
 
-### 7.1 `/api/health` HTTP endpoint (L-1, ค้างมาตั้งแต่ DEVOPS-3)
+### 7.1 `/api/health` HTTP endpoint (L-1, ค้างมาตั้งแต่ DEVOPS-3) — ✅ ทำแล้ว (2026-08-02)
 
-- [ ] เพิ่ม `GET /api/health` (เช็ค DB + Redis connection จริง ไม่ใช่แค่ process ตอบ)
+- [x] เพิ่ม `GET /api/health` — เช็ค Postgres + Redis จริง (ไม่ใช่แค่ process ตอบ), timeout 2 วิ ต่อ dependency, คืน `200` ถ้าทุกอย่าง ok หรือ `503` พร้อม `{database, redis}` แยกกันถ้ามีตัวไหน error. ไม่ต้อง login (load balancer ไม่มี session)
 - [ ] ต่อ load balancer / orchestrator health check เข้ากับ endpoint นี้แทนการเช็คแค่ TCP port
 
-> ตอนนี้ orchestrator เช็คได้แค่ว่า process listen อยู่ ไม่รู้ว่า DB/Redis connection ตายไปหรือยัง
+> Verify แล้วด้วย live fault-injection จริง: หยุด container Redis → ได้ `503 {"database":"ok","redis":"error"}` ทันที, restart Redis → กลับ `200` เองโดยไม่ต้อง restart backend
 
 ### 7.2 ตั้ง cron ให้ PDPA retention endpoint ทำงานอัตโนมัติ (L-2)
 

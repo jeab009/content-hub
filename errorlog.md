@@ -391,3 +391,11 @@ User สั่งทำ shared helper ตามที่ agent เสนอ — 
 Verify ครบ: tsc/lint สะอาด, **727/727 tests** (721 + 6 test ใหม่ของ shared util), e2e 28/28, rebuild docker, curl ยืนยันทั้ง 3 endpoint ยัง reject bad range ถูกต้องเหมือนเดิม (error message format คงเดิม, field name ตรงตาม caller).
 
 **ป้องกัน defect class นี้เกิดครั้งที่ 4 ได้แล้ว** — ทุก service ที่มี date-range field pair ในอนาคตต้อง import shared function แทนที่จะ copy-paste ใหม่.
+
+## `/api/health` endpoint (L-1 / DEVOPS-3) — 2026-08-02
+
+เพิ่ม `HealthModule` (`GET /api/health`) เช็ค Postgres (ผ่าน `PrismaService` เดียวกับที่ request จริงใช้) + Redis (ผ่าน dedicated client แยกจาก session/queue connection กันไม่ให้ health-check ปน real traffic) — ไม่ authenticate (load balancer ไม่มี session). Timeout 2 วิต่อ dependency กันแขวน. Response set status ผ่าน `Response` object ตรงๆ แทนการ throw exception เพราะ global `RedactingExceptionFilter` จะบีบ body เหลือแค่ `message` string เดียว — ทำให้ checks detail หายไปถ้า throw.
+
+Verify ครบ: **733/733 tests** (727+6 ใหม่), rebuild docker, **live fault-injection test จริง** — หยุด container Redis → ได้ `503 {"database":"ok","redis":"error"}` ทันที, restart Redis → auto-recover กลับ `200` เองไม่ต้อง restart backend เลย.
+
+**L-1 ปิดสมบูรณ์.**
