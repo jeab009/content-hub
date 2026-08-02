@@ -330,9 +330,11 @@ Full-system STRIDE/OWASP pass รันไป 2 รอบ (ครั้งแร
 
 > Next.js bundle `postcss`/`sharp` เวอร์ชันของตัวเองข้างใน — เปลี่ยนได้อิสระจาก `package.json` ของเรา ตอนนี้ accept เป็นความเสี่ยงต่ำ (ไม่ใช้ `next/image` เลย) แต่ควรเช็คซ้ำทุกครั้งก่อน build จริงเผื่อ Next.js ปล่อย patch ใหม่
 
-### 7.5 (ไม่บังคับ) พิจารณา `helmet` middleware บน backend
+### 7.5 `helmet` middleware บน backend — ✅ ทำแล้ว (2026-08-02)
 
-- [ ] backend ยังไม่มี `helmet` — frontend มี security headers แล้ว (M-2) แต่ backend response header ยังเป็นค่า default ของ Express
+- [x] เพิ่ม `helmet` เข้า `main.ts` bootstrap (CSP, X-Frame-Options, HSTS, X-Content-Type-Options, Referrer-Policy ฯลฯ)
+
+> frontend/backend เป็นคนละ origin จริง (คนละ port) เรียกกันผ่าน fetch + credentials — helmet default `crossOriginResourcePolicy: 'same-origin'` จะบล็อก fetch ข้าม origin ของ frontend เอง ต้อง override เป็น `'cross-origin'` explicit. Verify แล้วด้วย 738 unit + 28 e2e + curl header จริง + **ล็อกอินผ่าน browser จริง** จาก frontend เข้า backend ที่ rebuild แล้ว (login/me/connected-accounts/dashboard metrics fetch ข้าม origin สำเร็จหมด, console สะอาด 0 error)
 
 ---
 

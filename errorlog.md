@@ -423,3 +423,15 @@ Verify ครบ: tsc/lint สะอาด, **738/738 tests** (733+5 ใหม�
 Verify ครบ: tsc/lint สะอาด, **738/738 unit tests + 28/28 e2e tests** ไม่มี regression, rebuild docker boot สะอาด. **Live curl บน container จริง**: `/api/health` → `200` (public), `/api/dashboard/overview` ไม่มี session → `401`, `POST /auth/login` credential ผิดยังเข้าถึง handler ได้ (`401` จาก business logic ไม่ใช่โดน guard บล็อกก่อนถึง handler), route ที่ไม่มีจริง → `404` ปกติ (guard ไม่ false-positive กับ unmatched route), **happy path เต็ม**: login ด้วย seed admin credential จริง → ได้ session cookie → ยิง protected route ด้วย cookie นั้น → `200`.
 
 **L-3 ปิดสมบูรณ์ — SETUP-CHECKLIST §7 ทุกข้อ (7.1-7.3) ปิดหมดแล้ว เหลือแค่ 7.4 (standing reminder รัน npm audit ก่อน build) และ 7.5 (optional helmet) ที่ไม่ block production**
+
+## `helmet` middleware บน backend (L-4 / 7.5) — 2026-08-02
+
+Frontend มี security header ครบแล้ว (M-2) แต่ backend response header ยังเป็นค่า default ของ Express. เพิ่ม `helmet` เข้า `main.ts` bootstrap (ก่อน session/CORS middleware).
+
+**จุดที่ต้องระวังและแก้ก่อน ไม่ใช่หลังพัง**: helmet default `crossOriginResourcePolicy: 'same-origin'` — แต่ frontend (`localhost:3000`) กับ backend (`localhost:4000`) เป็นคนละ origin จริงตาม design (เรียกกันผ่าน `fetch` + CORS credentials ไม่ใช่ proxy) ถ้าปล่อยค่า default ไว้ browser จะบล็อก fetch ของ frontend เองก่อนถึง CORS header ด้วยซ้ำ (CORP เช็คก่อน CORS). Override เป็น `crossOriginResourcePolicy: { policy: 'cross-origin' }` explicit พร้อม comment อธิบายเหตุผล.
+
+`npm install helmet` เพิ่ม transitive dep ใหม่ทำให้ `npm audit` (รวม dev) ขึ้น 1 high — เช็คแล้วว่าเป็น `brace-expansion` ผ่าน `@nestjs/cli`/`eslint` (dev-only, มีอยู่ก่อนแล้วตั้งแต่ M-3) ไม่ใช่สิ่งที่ helmet เพิ่มเข้า production tree — ยืนยันด้วย `npm audit --omit=dev` = **0** เหมือนเดิม.
+
+Verify ครบ: tsc/lint สะอาด, **738/738 unit + 28/28 e2e** ไม่มี regression, rebuild docker boot สะอาด, curl header จริงเห็นครบ (CSP/X-Frame-Options/HSTS/X-Content-Type-Options/Referrer-Policy/`Cross-Origin-Resource-Policy: cross-origin`) + CORS preflight จาก frontend origin ยังผ่าน. **Live browser test จริง** (ไม่ใช่แค่ curl เพราะ CORP เป็น header ที่ browser บังคับใช้ curl ไม่เช็ค) — ล็อกอินจริงจาก frontend เข้า backend ที่ rebuild แล้ว, เห็น network request คู่ `login`/`me`/`csrf`/`connected-accounts` ข้าม origin สำเร็จหมด 200, เข้าหน้า dashboard เห็น metrics fetch ข้าม origin สำเร็จด้วย, console 0 error ตลอด.
+
+**L-4/7.5 ปิดสมบูรณ์ — SETUP-CHECKLIST §7 ปิดครบทุกข้อที่ทำได้แล้ว (7.1-7.3, 7.5) เหลือแค่ 7.4 standing reminder ที่ไม่มีวัน "เสร็จ" โดยธรรมชาติ (ต้องรันก่อน build production ทุกครั้ง)**
