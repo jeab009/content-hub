@@ -10,13 +10,18 @@ import { AuditLogController } from './audit-log.controller';
  * module re-declaring it as an import. PrismaModule is itself @Global, so the
  * audit write path picks up PrismaService with no extra wiring.
  *
- * Only AuditLogService is exported: the query service and controller are the
- * admin read surface (Phase 5D.1) and nothing else should depend on them.
+ * AuditLogService and AuditRetentionService are exported. AuditRetentionService
+ * is exported (not just internal) so PdpaRetentionModule's scheduled sweep
+ * (L-2) can inject it without importing this whole module's admin read
+ * surface — @Global already makes it reachable everywhere, this just states
+ * the intent explicitly. AuditLogQueryService and the controller remain
+ * unexported: they are the admin read surface (Phase 5D.1) and nothing else
+ * should depend on them.
  */
 @Global()
 @Module({
   controllers: [AuditLogController],
   providers: [AuditLogService, AuditLogQueryService, AuditRetentionService, AdminGuard],
-  exports: [AuditLogService],
+  exports: [AuditLogService, AuditRetentionService],
 })
 export class AuditLogModule {}

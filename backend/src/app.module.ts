@@ -15,6 +15,7 @@ import { SchedulerModule } from './modules/scheduler/scheduler.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { CommentsModule } from './modules/comments/comments.module';
+import { PdpaRetentionModule } from './modules/pdpa-retention/pdpa-retention.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { CommerceModule } from './modules/commerce/commerce.module';
 import { PaidModule } from './modules/paid/paid.module';
@@ -42,6 +43,10 @@ import { PaidModule } from './modules/paid/paid.module';
     MetricsModule,
     DashboardModule,
     CommentsModule,
+    // Must come after CommentsModule (needs its exported
+    // CommentRetentionService) and after QueueModule (needs the shared
+    // BullMQ connection config QueueModule's forRootAsync registers).
+    PdpaRetentionModule,
     ReportsModule,
     CommerceModule,
     PaidModule,
