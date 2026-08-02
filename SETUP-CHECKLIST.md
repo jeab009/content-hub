@@ -338,6 +338,19 @@ Full-system STRIDE/OWASP pass รันไป 2 รอบ (ครั้งแร
 
 ---
 
+## ส่วนที่ 8 — GitHub repo + branch protection — ✅ ทำแล้ว (2026-08-02)
+
+- [x] Push ขึ้น GitHub ครั้งแรก: [`jeab009/content-hub`](https://github.com/jeab009/content-hub), `main` เป็น default branch
+- [x] Branch protection บน `main` ผ่าน **GitHub Ruleset** (ไม่ใช่ classic branch protection — ดูเหตุผลด้านล่าง)
+
+> **repo เป็น public** (จำเป็น — classic branch protection ต้อง GitHub Pro บน private repo). เช็คแล้วก่อนเปลี่ยน: `.env` ไม่เคยถูก commit เลยทั้ง history, ไม่มี hardcoded secret ในโค้ด (มีแต่ `process.env.X` reference + `.env.example` placeholder) ปลอดภัยที่จะเปิด public
+>
+> ใช้ **Ruleset** แทน classic branch protection เพราะ classic gate CI แค่ตอน merge ผ่าน PR เท่านั้น — direct push เข้า `main` ยัง bypass ได้ถ้าไม่ force/ไม่ลบ. Ruleset gate ได้ทั้ง direct push และ PR จริง: block `deletion` + `non_fast_forward` (กัน force-push/ลบ), บังคับผ่าน CI 3 job (`review-authorship`, `backend`, `frontend`, strict) ก่อน merge/push เข้า `main`, `bypass_actors: []` — ไม่มีใครข้ามได้แม้ owner (`current_user_can_bypass: never`)
+>
+> **สำคัญ**: ต่อไปนี้ push ตรงเข้า `main` (แม้ของ owner เอง) จะโดนบล็อกถ้า CI ยังไม่เขียว — ต้องผ่าน PR ที่ CI ผ่านครบ 3 job ก่อนเสมอ
+
+---
+
 ## ลำดับที่แนะนำ
 
 **ถ้าจะใช้ต่อในเครื่องตัวเอง (ไม่เปิดสาธารณะ):**
