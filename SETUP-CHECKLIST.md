@@ -248,7 +248,7 @@ git config core.hooksPath .githooks
 
 **รันยังไง**: `POST /api/audit-logs/retention/anonymize` (admin + CSRF, ไม่ต้อง step-up เพราะมีแต่ *ลด* ข้อมูลส่วนบุคคล)
 
-- [ ] ตั้ง cron ให้รันอัตโนมัติ (ตอนนี้ manual — อยู่ในชุด cron ที่ defer ไว้ร่วมกับ metrics/comment sweep)
+- [x] ตั้ง cron ให้รันอัตโนมัติ — ✅ ทำแล้ว (2026-08-02) ดู §7.2 (`PdpaRetentionModule`, ทุกวัน 03:15)
 
 ### 6.2 Sentiment model
 
@@ -311,12 +311,12 @@ Full-system STRIDE/OWASP pass รันไป 2 รอบ (ครั้งแร
 
 > Verify แล้วด้วย live fault-injection จริง: หยุด container Redis → ได้ `503 {"database":"ok","redis":"error"}` ทันที, restart Redis → กลับ `200` เองโดยไม่ต้อง restart backend
 
-### 7.2 ตั้ง cron ให้ PDPA retention endpoint ทำงานอัตโนมัติ (L-2)
+### 7.2 ตั้ง cron ให้ PDPA retention endpoint ทำงานอัตโนมัติ (L-2) — ✅ ทำแล้ว (2026-08-02)
 
-- [ ] ตั้ง scheduled job เรียก `POST /api/comments/retention/purge` (comment 12 เดือน)
-- [ ] ตั้ง scheduled job เรียก `POST /api/audit-logs/retention/anonymize` (audit 90 วัน — ดู 6.1)
+- [x] ตั้ง scheduled job เรียก logic เดียวกับ `POST /api/comments/retention/purge` (comment 12 เดือน)
+- [x] ตั้ง scheduled job เรียก logic เดียวกับ `POST /api/audit-logs/retention/anonymize` (audit 90 วัน — ดู 6.1)
 
-> logic ทำงานถูกต้องแล้ว (verify แล้วผ่าน test จริง) แค่ยังต้องมี admin เรียกเองผ่าน API ไม่มี trigger อัตโนมัติ
+> ทำเป็น `PdpaRetentionModule` ใหม่ — BullMQ repeatable job (`upsertJobScheduler`, idempotent ข้าม restart) รันทุกวัน 03:15 เรียก `CommentRetentionService.purgeExpired` + `AuditRetentionService.anonymizeExpiredActors` ตรงๆ (function เดียวกับที่ endpoint เรียก ไม่ใช่ copy) ผ่าน actor `system:pdpa-retention-job`. Verify แล้วด้วย: 738/738 test ผ่าน, docker rebuild boot สะอาด, เช็ค Redis จริงผ่าน `queue.getJobSchedulers()` เห็น next run ตรง `2026-08-02T03:15:00.000Z`, trigger job manual บน container จริงแล้วเห็น log ประมวลผลสำเร็จ
 
 ### 7.3 พิจารณา global `APP_GUARD` (L-3, defense-in-depth, ไม่บังคับ)
 

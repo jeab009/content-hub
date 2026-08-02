@@ -399,3 +399,17 @@ Verify ครบ: tsc/lint สะอาด, **727/727 tests** (721 + 6 test ใ�
 Verify ครบ: **733/733 tests** (727+6 ใหม่), rebuild docker, **live fault-injection test จริง** — หยุด container Redis → ได้ `503 {"database":"ok","redis":"error"}` ทันที, restart Redis → auto-recover กลับ `200` เองไม่ต้อง restart backend เลย.
 
 **L-1 ปิดสมบูรณ์.**
+
+## PDPA retention cron job (L-2) — 2026-08-02
+
+`CommentRetentionService.purgeExpired` (comment 12 เดือน) และ `AuditRetentionService.anonymizeExpiredActors` (audit actor 90 วัน) ทำงานถูกต้องอยู่แล้ว (verify ผ่าน test จริงตั้งแต่ก่อนหน้านี้) แต่ไม่มี trigger อัตโนมัติ — admin ต้องเรียก 2 POST endpoint เอง.
+
+เพิ่ม `PdpaRetentionModule` ใหม่: BullMQ repeatable job (`upsertJobScheduler`, idempotent ข้าม restart/redeploy) รันทุกวัน 03:15 (offset 15 นาทีจาก token-refresh sweep เดิมที่ 03:00 กันชน DB pool). `PdpaRetentionProcessor` เรียก service method เดิม 2 ตัวตรงๆ (ไม่ copy logic) ผ่าน actor `system:pdpa-retention-job` (ตาม convention เดิม `system:token-refresh-job`/`system:commerce-adapter`/`system:paid-adapter`).
+
+**พบ circular dependency ก่อนเขียนโค้ด (ไล่ dependency graph มือ ไม่ใช่เจอตอน build พัง)**: ถ้าเพิ่ม job นี้เข้า `QueueService`/`QueueModule` เดิมตรงๆ จะต้อง import `CommentsModule` (สำหรับ `CommentRetentionService`) แต่ `CommentsModule → PublishModule → ต้องการ BullMQ connection config ที่ QueueModule กำลัง register อยู่` — เป็น cycle จริง. แก้โดยสร้างโมดูลอิสระ (`PdpaRetentionModule`) ที่เรียก `BullModule.registerQueue()` เองตรงๆ ไม่ import `QueueModule` เลย เลียนแบบ pattern ที่ `PublishModule` ใช้อยู่แล้ว (พิสูจน์แล้วว่าใช้งานได้จริงในระบบนี้).
+
+`AuditLogModule` (global) เดิม export แค่ `AuditLogService` — เพิ่ม `AuditRetentionService` เข้า `exports` array ด้วย (ยังเป็น provider อยู่แล้ว แค่ยังไม่เคย export ให้โมดูลอื่นนอก audit inject ได้).
+
+Verify ครบ: tsc/lint สะอาด, **738/738 tests** (733+5 ใหม่: 4 processor spec + 1 scheduler spec), rebuild docker boot สะอาด (log ยืนยัน `Registered repeatable job: PDPA retention sweep (daily, 03:15)`), **เช็ค Redis จริงผ่าน `queue.getJobSchedulers()` ในคอนเทนเนอร์ที่รันอยู่** เห็น scheduler ลงทะเบียนจริง (`pattern: "15 3 * * *"`, `next: 1785640500000` แปลงตรง `2026-08-02T03:15:00.000Z`), **trigger job manual จริง** (`queue.add()`) แล้วเห็น processor log ประมวลผลสำเร็จ (`purged 0 expired comment(s), anonymized 0 expired audit actor(s)` — ข้อมูล dev DB ไม่มีอะไรหมดอายุ ตรงตามคาด).
+
+**L-2 ปิดสมบูรณ์.**
