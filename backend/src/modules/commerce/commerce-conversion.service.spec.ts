@@ -110,6 +110,21 @@ describe('CommerceConversionService', () => {
       });
     });
 
+    describe('M-4: periodEnd before periodStart rejects with a clean 400, not a raw DB error', () => {
+      it('rejects periodEnd before periodStart', async () => {
+        await expect(
+          service.create(dto({ periodStart: '2026-07-10', periodEnd: '2026-07-01' }), 'user-1'),
+        ).rejects.toThrow(BadRequestException);
+        expect(prisma.commerceConversion.create).not.toHaveBeenCalled();
+      });
+
+      it('accepts periodEnd equal to periodStart', async () => {
+        await expect(
+          service.create(dto({ periodStart: '2026-07-10', periodEnd: '2026-07-10' }), 'user-1'),
+        ).resolves.toBeDefined();
+      });
+    });
+
     describe('idempotency window (C6)', () => {
       it('rejects a byte-identical payload from the same user within the window with 409', async () => {
         prisma.commerceConversion.findFirst.mockResolvedValueOnce({ id: 'earlier-conversion' });

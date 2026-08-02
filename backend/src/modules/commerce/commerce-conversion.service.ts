@@ -34,6 +34,18 @@ export class CommerceConversionService {
     // QA-1: enforced HERE, in the service — not only the DTO's redundant
     // @Matches — so the rule also covers any future adapter-fed path.
     assertStatementRefShape(dto.statementRef);
+
+    const periodStart = new Date(dto.periodStart);
+    const periodEnd = new Date(dto.periodEnd);
+    // M-4 (pre-production security review #2): the third occurrence of the
+    // BUG-7A-01/BUG-7B-01 defect class — a date-range field pair validated
+    // only by the DB CHECK (commerce_conversions_period_chk), with no
+    // application-layer guard, so a backwards period reached Postgres and
+    // came back as a raw 500 instead of a clean 400. Mirrors
+    // PaidPerformanceService.assertValidPeriodRange exactly (both dates
+    // required, no partial-update case here since this is create-only).
+    this.assertValidPeriodRange(periodStart, periodEnd);
+
     await this.assertNotDuplicateWithinWindow(dto, userId);
 
     const reversalOf = await this.loadAndValidateReversalTarget(dto);
@@ -68,8 +80,8 @@ export class CommerceConversionService {
     const conversion = await this.prisma.commerceConversion.create({
       data: {
         channel: dto.channel,
-        periodStart: new Date(dto.periodStart),
-        periodEnd: new Date(dto.periodEnd),
+        periodStart,
+        periodEnd,
         ordersCount: dto.ordersCount ?? null,
         itemsSold: dto.itemsSold ?? null,
         grossSalesAmount:
@@ -125,6 +137,21 @@ export class CommerceConversionService {
       },
       orderBy: { periodStart: 'asc' },
     });
+  }
+
+  /**
+   * M-4: reject `periodEnd < periodStart` with a clean 400 before it ever
+   * reaches the DB CHECK (`commerce_conversions_period_chk`). Both dates are
+   * always required on this DTO, so equality is the only permitted edge —
+   * same shape as `PaidPerformanceService.assertValidPeriodRange`.
+   */
+  private assertValidPeriodRange(periodStart: Date, periodEnd: Date): void {
+    if (periodEnd < periodStart) {
+      throw new BadRequestException(
+        `periodEnd (${periodEnd.toISOString().slice(0, 10)}) must not be before periodStart ` +
+          `(${periodStart.toISOString().slice(0, 10)}).`,
+      );
+    }
   }
 
   /**
