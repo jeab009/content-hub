@@ -1,12 +1,8 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AdCampaign, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../../common/audit/audit-log.service';
+import { assertValidDateRange } from '../../common/utils/date-range.util';
 import { ContentService } from '../content/content.service';
 import { assertPaidSupportedCurrency } from './paid-currency.util';
 import { PAID_DEFAULT_CURRENCY } from './paid.constants';
@@ -48,7 +44,7 @@ export class PaidCampaignService {
     // PrismaClientUnknownRequestError surfaced as an opaque 500 instead of
     // naming the field, the exact failure mode this codebase already knows
     // how to avoid one line away.
-    this.assertValidDateRange(startDate, endDate);
+    assertValidDateRange(startDate, endDate, { start: 'startDate', end: 'endDate' });
 
     const campaign = await this.createOrConflict(
       {
@@ -96,7 +92,10 @@ export class PaidCampaignService {
     const effectiveStartDate = dto.startDate ? new Date(dto.startDate) : existing.startDate;
     const effectiveEndDate =
       dto.endDate !== undefined ? (dto.endDate ? new Date(dto.endDate) : null) : existing.endDate;
-    this.assertValidDateRange(effectiveStartDate, effectiveEndDate);
+    assertValidDateRange(effectiveStartDate, effectiveEndDate, {
+      start: 'startDate',
+      end: 'endDate',
+    });
 
     const data: Prisma.AdCampaignUpdateInput = {
       ...(dto.externalCampaignName !== undefined && {
@@ -161,22 +160,6 @@ export class PaidCampaignService {
       throw new NotFoundException('Ad campaign not found');
     }
     return campaign;
-  }
-
-  /**
-   * BUG-7A-01: reject `endDate < startDate` with a clean 400 before it ever
-   * reaches the DB CHECK (`ad_campaigns_date_range_chk`). A `null` endDate
-   * ("still running", design §1.2) always passes — mirrors the DB CHECK's
-   * own `end_date IS NULL OR end_date >= start_date` shape exactly, so the
-   * two can never disagree.
-   */
-  private assertValidDateRange(startDate: Date, endDate: Date | null): void {
-    if (endDate !== null && endDate < startDate) {
-      throw new BadRequestException(
-        `endDate (${endDate.toISOString().slice(0, 10)}) must not be before startDate ` +
-          `(${startDate.toISOString().slice(0, 10)}).`,
-      );
-    }
   }
 
   /** Translates the UNIQUE(channel, externalCampaignId) violation into a 409. */

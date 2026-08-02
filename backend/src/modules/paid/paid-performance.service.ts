@@ -7,6 +7,7 @@ import {
 import { AdPerformanceEntry, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogService } from '../../common/audit/audit-log.service';
+import { assertValidDateRange } from '../../common/utils/date-range.util';
 import { PaidCampaignService } from './paid-campaign.service';
 import { assertPaidSourceRefShape } from './paid-source-ref.util';
 import { assertPaidSupportedCurrency } from './paid-currency.util';
@@ -49,12 +50,14 @@ export class PaidPerformanceService {
     const periodStart = new Date(dto.periodStart);
     const periodEnd = new Date(dto.periodEnd);
     // BUG-7B-01: the exact same missing-guard shape as BUG-7A-01
-    // (paid-campaign.service.ts's assertValidDateRange), reintroduced on this
+    // (paid-campaign.service.ts's date-range guard), reintroduced on this
     // sibling field pair — the DB CHECK (ad_performance_entries_period_chk)
     // already stops the bad row, but without this the client-only gate
     // (canSubmitPerformanceEntry in paid-logic.ts) was the only thing
-    // preventing an opaque 500 on any direct API call.
-    this.assertValidPeriodRange(periodStart, periodEnd);
+    // preventing an opaque 500 on any direct API call. Both boundaries are
+    // always required here (unlike a campaign's optional endDate), so
+    // equality is the only permitted edge.
+    assertValidDateRange(periodStart, periodEnd, { start: 'periodStart', end: 'periodEnd' });
 
     await this.assertNotDuplicateWithinWindow(campaignId, dto, userId, currency);
     await this.assertCorrectionTargetIsSameCampaign(campaignId, dto.correctsEntryId);
@@ -121,22 +124,6 @@ export class PaidPerformanceService {
       },
       orderBy: { periodStart: 'asc' },
     });
-  }
-
-  /**
-   * BUG-7B-01: reject `periodEnd < periodStart` with a clean 400 before it
-   * ever reaches the DB CHECK (`ad_performance_entries_period_chk`) — mirrors
-   * `PaidCampaignService.assertValidDateRange` exactly (same defect class,
-   * same fix shape), except both boundaries are always required here (unlike
-   * a campaign's optional `endDate`), so equality is the only permitted edge.
-   */
-  private assertValidPeriodRange(periodStart: Date, periodEnd: Date): void {
-    if (periodEnd < periodStart) {
-      throw new BadRequestException(
-        `periodEnd (${periodEnd.toISOString().slice(0, 10)}) must not be before periodStart ` +
-          `(${periodStart.toISOString().slice(0, 10)}).`,
-      );
-    }
   }
 
   /**
