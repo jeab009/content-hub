@@ -6,15 +6,14 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { apiClient, ApiError, ConnectedAccount, CurrentUser } from '@/lib/api-client';
 import { AppHeader } from '@/components/AppHeader';
 
+// Provider-neutral: this page now offers both Facebook and Google/YouTube
+// connect buttons, and the backend's callback redirect (see
+// connected-accounts.controller.ts's handleOAuthCallback) doesn't identify
+// which provider a success/cancelled redirect came from — only the error
+// case carries a provider-specific `message` param, read separately below.
 const STATUS_MESSAGES: Record<string, { tone: 'success' | 'warning' | 'danger'; text: string }> = {
-  success: { tone: 'success', text: 'Facebook Page connected successfully.' },
-  cancelled: { tone: 'warning', text: 'Facebook connection was cancelled.' },
-  error: {
-    tone: 'danger',
-    // Matches the backend's user-facing copy for the single-use-code retry
-    // edge case (security decision #8): ask for a retry, not a dead end.
-    text: 'Could not connect to Facebook. Please retry the connection.',
-  },
+  success: { tone: 'success', text: 'Account connected successfully.' },
+  cancelled: { tone: 'warning', text: 'Connection was cancelled.' },
 };
 
 export default function SettingsPage(): JSX.Element {
@@ -78,7 +77,19 @@ function SettingsPageContent(): JSX.Element {
   }
 
   const status = searchParams.get('status');
-  const statusBanner = status ? STATUS_MESSAGES[status] : null;
+  // Backend's `message` param (see handleOAuthCallback's exchange_failed
+  // branch) is already provider-aware ("Could not connect to Google...");
+  // previously this page ignored it and always showed Facebook's copy.
+  const statusBanner =
+    status === 'error'
+      ? {
+          tone: 'danger' as const,
+          text:
+            searchParams.get('message') ?? 'Could not connect. Please retry the connection.',
+        }
+      : status
+        ? STATUS_MESSAGES[status]
+        : null;
 
   if (isLoading) {
     return <p>Loading…</p>;
@@ -146,6 +157,9 @@ function SettingsPageContent(): JSX.Element {
 
         <a className="btn btn-primary" href={apiClient.facebookAuthorizeUrl()}>
           Connect a Facebook Page
+        </a>{' '}
+        <a className="btn btn-primary" href={apiClient.googleAuthorizeUrl()}>
+          Connect a YouTube Channel
         </a>
       </section>
     </div>

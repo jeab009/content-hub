@@ -1126,6 +1126,8 @@ export const apiClient = {
 
   facebookAuthorizeUrl: () => `${API_BASE_URL}/api/connected-accounts/facebook/authorize`,
 
+  googleAuthorizeUrl: () => `${API_BASE_URL}/api/connected-accounts/google/authorize`,
+
   disconnectAccount: (id: string, csrfToken: string) =>
     request<void>(`/api/connected-accounts/${id}`, { method: 'DELETE', csrfToken }),
 
