@@ -77,6 +77,17 @@ services:
       FACEBOOK_REDIRECT_URI: http://localhost:4000/api/connected-accounts/facebook/callback
       FACEBOOK_GRAPH_API_VERSION: v21.0
       FACEBOOK_OAUTH_SCOPES: pages_show_list,pages_read_engagement,pages_manage_posts
+      # Blank default is deliberate (mirrors backend/.env.example): the app
+      # boots fine unconfigured, the connect flow just 409s with a clear
+      # "not configured" message until real Google Cloud OAuth credentials
+      # are set in .env — see GoogleOAuthApiClient.assertConfigured().
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      # Must be reachable from the browser (host), matches the published
+      # port below — NOT the in-network "backend" hostname (same reasoning
+      # as FACEBOOK_REDIRECT_URI above).
+      GOOGLE_REDIRECT_URI: http://localhost:4000/api/connected-accounts/google/callback
+      GOOGLE_OAUTH_SCOPES: https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly
       # Publisher safety flags — all four MUST stay "mock" outside an explicit
       # production opt-in; the backend refuses to boot otherwise (see
       # assertPublisherFlagsAreSafe in backend/src/main.ts). TikTok/LINE live
