@@ -12,11 +12,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { ConfigService } from '@nestjs/config';
 import { SessionAuthGuard } from '../../common/guards/session-auth.guard';
 import { AdminGuard } from '../../common/guards/admin.guard';
 import { CsrfGuard } from '../../common/guards/csrf.guard';
 import { CurrentUserId } from '../../common/decorators/current-user.decorator';
 import { AuditLogService } from '../../common/audit/audit-log.service';
+import { AppConfig } from '../../config/configuration';
 import { ConnectedAccountsService } from './connected-accounts.service';
 import { OAuthStateService, OAuthProvider } from './services/oauth-state.service';
 import { FacebookGraphApiClient } from './services/facebook-graph-api.client';
@@ -34,13 +36,33 @@ import { ConnectedAccountResponseDto } from './dto/connected-account-response.dt
 @Controller('api/connected-accounts')
 @UseGuards(SessionAuthGuard, AdminGuard)
 export class ConnectedAccountsController {
+  // The callback runs on the backend's own origin (Google/Facebook redirect
+  // the browser straight back to it), but the destination page lives on the
+  // frontend — a different origin in every environment except behind a
+  // shared reverse proxy. A relative '/settings?...' redirect resolves
+  // against the backend's own origin and 404s there; found live testing
+  // the Google connect flow (the exchange itself succeeded — this was
+  // purely the post-success redirect landing on the wrong host).
+  private readonly frontendOrigin: string;
+
   constructor(
     private readonly connectedAccountsService: ConnectedAccountsService,
     private readonly oauthStateService: OAuthStateService,
     private readonly facebookClient: FacebookGraphApiClient,
     private readonly googleClient: GoogleOAuthApiClient,
     private readonly auditLog: AuditLogService,
-  ) {}
+    configService: ConfigService,
+  ) {
+    const app = configService.get<AppConfig>('app');
+    if (!app) {
+      throw new Error('App config not loaded');
+    }
+    this.frontendOrigin = app.corsOrigin.split(',')[0].trim();
+  }
+
+  private settingsRedirectUrl(query: string): string {
+    return `${this.frontendOrigin}/settings?${query}`;
+  }
 
   @Get()
   async list(@CurrentUserId() userId: string): Promise<ConnectedAccountResponseDto[]> {
@@ -112,7 +134,10 @@ export class ConnectedAccountsController {
         result: 'failure',
         meta: { provider, reason: error },
       });
-      response.redirect(HttpStatus.FOUND, '/settings?status=cancelled&reason=access_denied');
+      response.redirect(
+        HttpStatus.FOUND,
+        this.settingsRedirectUrl('status=cancelled&reason=access_denied'),
+      );
       return;
     }
 
@@ -128,7 +153,10 @@ export class ConnectedAccountsController {
     }
 
     if (!code) {
-      response.redirect(HttpStatus.FOUND, '/settings?status=cancelled&reason=missing_code');
+      response.redirect(
+        HttpStatus.FOUND,
+        this.settingsRedirectUrl('status=cancelled&reason=missing_code'),
+      );
       return;
     }
 
@@ -138,7 +166,7 @@ export class ConnectedAccountsController {
       } else {
         await this.connectedAccountsService.completeGoogleConnection(userId, code);
       }
-      response.redirect(HttpStatus.FOUND, '/settings?status=success');
+      response.redirect(HttpStatus.FOUND, this.settingsRedirectUrl('status=success'));
     } catch {
       this.auditLog.record({
         actor: userId,
@@ -148,8 +176,12 @@ export class ConnectedAccountsController {
       });
       response.redirect(
         HttpStatus.FOUND,
-        '/settings?status=error&reason=exchange_failed&message=' +
-          encodeURIComponent(`Could not connect to ${providerLabel}. Please retry the connection.`),
+        this.settingsRedirectUrl(
+          'status=error&reason=exchange_failed&message=' +
+            encodeURIComponent(
+              `Could not connect to ${providerLabel}. Please retry the connection.`,
+            ),
+        ),
       );
     }
   }
