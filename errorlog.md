@@ -447,3 +447,15 @@ Verify ครบ: tsc/lint สะอาด, **738/738 unit + 28/28 e2e** ไม�
 Verify ครบ: recreate container, curl-login แล้วยิง `google/authorize` — เปลี่ยนจาก `409` เป็น `302` ไป `accounts.google.com` ถูกต้อง (redirect_uri + scope ตรง). ตัวโค้ด backend ไม่ต้องแก้อะไรเลย เป็น config-only fix.
 
 **บทเรียนสำคัญ**: ฟีเจอร์ที่ "เขียนโค้ดเสร็จ" ไม่เท่ากับ "deploy ได้จริง" — Google OAuth ผ่าน unit test มาตลอดตั้งแต่ task #4 (เพราะ test รันตรงกับ backend/.env ผ่าน dotenv โดยตรง ไม่ผ่าน docker-compose) แต่ deployment path จริงพังมาตลอดโดยไม่มีใครรู้จนกว่าจะมี UAT สด ๆ ที่ทดสอบผ่าน `docker compose up` จริง
+
+## OAuth callback redirect ใช้ relative path — 404 หลัง connect สำเร็จจริง — 2026-08-05
+
+หลัง user แก้บั๊ก docker-compose แล้ว ลอง connect YouTube ผ่าน browser จริงจนจบ (login Google, เพิ่ม test user ใน Google Cloud Console, กด Allow) — OAuth exchange **สำเร็จจริง** (ยืนยันจาก `GET /api/connected-accounts` เห็น YouTube channel connected + token ครบ) แต่ browser landed บนหน้า `404 Cannot GET /settings?status=success`.
+
+Root cause: `handleOAuthCallback`'s ทั้ง 4 จุด redirect ไปที่ path relative (`/settings?status=...`) — relative redirect resolve กับ origin ของ **request ปัจจุบัน** ซึ่งตอนนั้นคือ backend (`:4000`, เพราะ Google ส่ง browser กลับมาที่ callback ของเราตรงๆ) ไม่ใช่ frontend (`:3000`). เกิดในทุก environment ที่ frontend/backend เป็นคนละ origน (local dev ก็เป็น, production ที่ตั้ง `CORS_ORIGIN` แยกก็เป็นเหมือนกัน) ไม่ใช่ edge case เฉพาะ local
+
+แก้ด้วยการ build absolute URL จาก `app.corsOrigin` (ค่าเดียวกับที่ `main.ts` ใช้ตั้ง CORS whitelist อยู่แล้ว — คือ frontend origin เป๊ะ) ผ่าน helper `settingsRedirectUrl()` ใช้ร่วมกันทั้ง 4 จุด (error/cancelled, missing_code, success, exchange_failed)
+
+Verify ครบ: tsc/lint สะอาด, 738 unit + 28 e2e (ไม่มี spec เดิมของ controller นี้เลย ไม่กระทบอะไร), rebuild docker, **live curl** ยืนยัน redirect เปลี่ยนจาก path เปล่าเป็น `http://localhost:3000/settings?...` และหน้านั้นตอบ `200` จริง
+
+**สรุปห่วงโซ่บั๊กทั้งหมดของ Google OAuth flow นี้ (3 ชั้น ถูกเจอทีละชั้นผ่าน UAT สด)**: (1) ไม่มีปุ่มใน UI เลย (2) `docker-compose.yml` ไม่ pass env เข้า container (3) redirect หลัง connect สำเร็จ 404. ทั้ง 3 อย่างไม่มีตัวไหนถูกจับได้จาก unit/e2e test เลยสักตัว เพราะไม่มี test ตัวไหนจำลอง "browser ทำ full round-trip ผ่าน docker deployment จริง" — เป็นเหตุผลที่ authentic UAT (ทดสอบจริงจน login/consent จบ ไม่ใช่แค่ mock) สำคัญมาก
