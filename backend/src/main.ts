@@ -20,6 +20,19 @@ async function bootstrap(): Promise<void> {
     throw new Error('App config not loaded');
   }
 
+  // Trust exactly one hop: SETUP-CHECKLIST.md §5.1 requires a TLS-terminating
+  // reverse proxy in front of this backend in every real deployment, so
+  // every request this process sees arrives over plain HTTP even when the
+  // browser used HTTPS. Without this, Express's req.secure is always false,
+  // and express-session's `cookie.secure: true` (enabled below whenever
+  // NODE_ENV=production) silently refuses to ever set the session cookie —
+  // login succeeds server-side (audit log, Redis session write) but the
+  // browser never receives it, so every subsequent request looks
+  // unauthenticated. `1` (not `true`) trusts only the immediate proxy's
+  // X-Forwarded-* headers, not an arbitrary chain — correct for the
+  // single-reverse-proxy topology this app is deployed behind.
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
   // Dedicated Redis connection for sessions, logical DB 1 — kept separate
   // from BullMQ's DB 0 (approved architecture) so a queue-side FLUSHDB never
   // logs everyone out, and vice versa.
