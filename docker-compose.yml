@@ -54,9 +54,19 @@ services:
       redis:
         condition: service_healthy
     environment:
-      NODE_ENV: development
+      # Defaults keep `docker compose up` on a laptop working exactly as
+      # before. Override in .env when deploying to a real host — every value
+      # below that mentions a browser-reachable URL has to change together
+      # (CORS_ORIGIN, both OAuth redirect URIs, and the frontend's
+      # NEXT_PUBLIC_API_BASE_URL build arg), because they all describe the
+      # same two origins from the browser's point of view.
+      #
+      # NODE_ENV=production turns on the session cookie's Secure flag, so it
+      # REQUIRES HTTPS end to end — setting it while serving over plain HTTP
+      # silently breaks login (the browser refuses to send the cookie back).
+      NODE_ENV: ${NODE_ENV:-development}
       PORT: 4000
-      CORS_ORIGIN: http://localhost:3000
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
       # In-network service names, NOT localhost — this is the one place the
       # "docker run -e ... localhost" instructions in the older README quick
       # start don't apply, because these vars are read by a process running
@@ -74,7 +84,7 @@ services:
       FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET:-demo-app-secret-replace-me}
       # Must be reachable from the browser (host), matches the published
       # port below — NOT the in-network "backend" hostname.
-      FACEBOOK_REDIRECT_URI: http://localhost:4000/api/connected-accounts/facebook/callback
+      FACEBOOK_REDIRECT_URI: ${FACEBOOK_REDIRECT_URI:-http://localhost:4000/api/connected-accounts/facebook/callback}
       FACEBOOK_GRAPH_API_VERSION: v21.0
       FACEBOOK_OAUTH_SCOPES: pages_show_list,pages_read_engagement,pages_manage_posts
       # Blank default is deliberate (mirrors backend/.env.example): the app
@@ -86,7 +96,7 @@ services:
       # Must be reachable from the browser (host), matches the published
       # port below — NOT the in-network "backend" hostname (same reasoning
       # as FACEBOOK_REDIRECT_URI above).
-      GOOGLE_REDIRECT_URI: http://localhost:4000/api/connected-accounts/google/callback
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:4000/api/connected-accounts/google/callback}
       GOOGLE_OAUTH_SCOPES: https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly
       # Publisher safety flags — all four MUST stay "mock" outside an explicit
       # production opt-in; the backend refuses to boot otherwise (see
@@ -111,8 +121,11 @@ services:
       dockerfile: Dockerfile
       args:
         # Build-time only (see frontend/Dockerfile) — browser-reachable
-        # backend URL, not the in-network "backend" hostname.
-        NEXT_PUBLIC_API_BASE_URL: http://localhost:4000
+        # backend URL, not the in-network "backend" hostname. Because Next.js
+        # inlines NEXT_PUBLIC_* at build time, changing this in .env has NO
+        # effect until the frontend image is rebuilt (`docker compose build
+        # frontend`), unlike the backend vars above which apply on restart.
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:4000}
     restart: unless-stopped
     depends_on:
       - backend
