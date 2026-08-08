@@ -92,6 +92,24 @@
   - **เจอบั๊กจริงตอน deploy จริงครั้งแรก**: `docker-compose.yml` hardcode `localhost` ไว้ 4 จุด (NODE_ENV/CORS_ORIGIN/ทั้งสอง OAuth redirect URI/NEXT_PUBLIC_API_BASE_URL) — ใช้ได้แค่ browser อยู่เครื่องเดียวกับ container เท่านั้น แก้ parameterize ทั้งหมด (default เหมือนเดิมเป๊ะ, verify ด้วย `docker compose config`)
   - **HTTPS แบบ internal-IP ทดสอบก่อนมี domain**: ใช้ Caddy + `tls internal` (self-signed อัตโนมัติ, ไม่ต้องพึ่ง Let's Encrypt/DNS) — เจอ gotcha จริง: Caddyfile ระบุ IP เปล่า (`192.168.214.210 {`) ไม่พอ Caddy skip auto-HTTPS ให้ IP address เว้นแต่ระบุ scheme ชัดเจน (`https://192.168.214.210 {`) ถึงจะ bind 443 จริง
   - **บั๊กที่ 5 (จริง, สำคัญมาก) เจอตอน dry-run HTTPS จริงครั้งแรก**: login สำเร็จฝั่ง backend เป๊ะ (audit log + session เขียนลง Redis จริง) แต่ browser ไม่เคยได้ `Set-Cookie` เลย — ทุก request หลังจากนั้นเหมือนไม่ได้ login. Root cause: `main.ts` **ไม่เคยตั้ง `trust proxy` เลยตั้งแต่แรกเริ่มโปรเจกต์** — Express เห็นทุก request จาก reverse proxy (Caddy terminate TLS แล้ว proxy ผ่าน HTTP ภายใน) เป็น plain HTTP เสมอ `req.secure` เลย false ตลอด และ express-session's `cookie.secure:true` (เปิดเมื่อ `NODE_ENV=production`) จะ**เงียบๆ ปฏิเสธไม่ตั้ง cookie เลย**เป็นพฤติกรรมมาตรฐานของ library (ไม่ใช่บั๊ก library) พลาดมาตลอดเพราะ**นี่เป็นครั้งแรกที่ `NODE_ENV=production` รันหลัง reverse proxy จริง**ตลอดทั้งโปรเจกต์ (M-3/security review re-run ก่อนหน้ารัน backend ตรงๆ ไม่มี proxy) แก้ด้วย `app.getHttpAdapter().getInstance().set('trust proxy', 1)` (เชื่อถือแค่ hop เดียว ไม่ใช่ chain ทั้งหมด). Verify live ยืนยันแล้ว: `Set-Cookie` มี `Secure` flag ปรากฏจริง, authenticated call ได้ `200`
+
+## HTTPS จริงบน production VPS — root cause แท้จริงไม่ใช่ Security List/NSG (2026-08-08)
+
+Domain `content.jnctech.co.th` ตั้ง Caddy + Let's Encrypt ไว้แล้ว แต่ port 80/443 เข้าจากภายนอกไม่ได้เลย (`No route to host` จาก external, `Empty reply from server` จาก LAN) นานหลายชั่วโมง แม้ตรวจสอบ **OCI Security List** (ingress 80/443 จาก `0.0.0.0/0` ครบ) และ **Network Security Group** (allow all protocols) ถูกต้องทั้งคู่แล้ว, ไม่มี Load Balancer, support ยืนยันฝั่ง network ไม่ได้บล็อกอะไร — วนหา root cause อยู่นาน (เข้าใจผิดคิดว่าเป็น Caddy bug, WAF, MTU ก่อนหน้านี้ ล้วนผิดทาง)
+
+**Root cause จริง**: `sudo iptables -S` (raw ruleset ใต้ ufw) เจอ **Oracle stock image default firewall** วางอยู่ **ก่อน** ufw's chain ใน `INPUT` เสมอ:
+```
+-A INPUT -p tcp -m state --state NEW -m tcp --dport 22 -j ACCEPT   ← อนุญาตแค่ port 22
+-A INPUT -j REJECT --reject-with icmp-host-prohibited              ← ปฏิเสธทุกอย่างที่เหลือทันที
+-A INPUT -j ufw-before-logging-input                                ← ufw chain ไม่มีทางถูกเช็คเลย (มาทีหลัง REJECT ไปแล้ว)
+```
+port 3000/4000 (Docker-published) รอดเพราะ traffic วิ่งผ่าน **FORWARD chain** (DNAT ไป container bridge ก่อน) คนละทางกับ INPUT — แต่ **Caddy bind ตรงกับ host เอง** (ไม่ผ่าน Docker) traffic เลยวิ่งผ่าน **INPUT chain** ที่โดน Oracle rule REJECT ก่อนถึงคิว ufw เสมอ — นี่คือเหตุผลที่ 3000/4000 ใช้งานได้แต่ 80/443 ใช้ไม่ได้ ทั้งที่ ufw allow ทั้งคู่เหมือนกัน
+
+แก้ด้วย `iptables -I INPUT 5/6 -p tcp --dport 80/443 -j ACCEPT` (แทรกก่อน rule REJECT เลียนแบบ pattern ของ port 22 ที่มีอยู่แล้ว) แล้ว `netfilter-persistent save` กัน reboot แล้วหาย. หลังแก้ port 80 เปิดจริงทันที (`308` ทั้ง LAN IP และ public IP) → Caddy ขอ cert จาก Let's Encrypt **production** สำเร็จภายในไม่กี่วินาที
+
+**บทเรียนสำคัญที่สุด**: OCI (และ cloud provider อื่นที่ใช้ stock image) อาจมี **firewall เริ่มต้นระดับ OS ซ้อนอยู่ใต้ ufw** ที่ console-level (Security List/NSG) มองไม่เห็นและแก้ไม่ได้เลย — ต้องเช็ค `iptables -S` ตรงๆ ไม่ใช่เชื่อแค่ `ufw status` หรือ cloud console ถ้า port ใช้งานได้เฉพาะบาง port (โดยเฉพาะ pattern "Docker-published port ใช้ได้ แต่ host-bound port ใช้ไม่ได้") ให้สงสัยจุดนี้เป็นอันดับแรก — เพราะ Docker traffic กับ host-bound traffic เดินคนละ chain กันจริงๆ (`FORWARD` vs `INPUT`)
+
+Verify ครบหลังแก้: login/dashboard/health ทั้งหมด `200` ผ่าน HTTPS domain จริง, cookie มี `Secure` flag set จริง (`NODE_ENV=production` ทำงานถูกต้องกับ reverse proxy). อัพเดต `.env` เป็น production values ครบ (`CORS_ORIGIN`/`NEXT_PUBLIC_API_BASE_URL`/ทั้งสอง OAuth redirect URI ชี้ไป `https://content.jnctech.co.th`), rebuild frontend (build-time var), force-recreate ทั้งคู่. **หมายเหตุค้าง**: `GOOGLE_REDIRECT_URI` เปลี่ยนแล้วต้องไปอัพเดตใน Google Cloud Console ด้วย ไม่งั้น Google OAuth จะพังเพราะ URI ไม่ตรงที่ลงทะเบียนไว้ (ยังไม่ได้ทำ ณ จุดบันทึกนี้)
 ## Reference files
 
 - [global_config.md](global_config.md) — design tokens ที่ใช้ร่วมกัน (font, สี, ขนาด, spacing, chart constants, component patterns) ดึงจากโค้ดจริง
